@@ -1,0 +1,11 @@
+gui:
+  title: "My Library - Page %d"
+  prev_page: "< Previous Page"
+  next_page: "Next Page >"
+  item_received: "You have received the item: %s"
+messages:
+  reload_success: "Plugin reloaded and database connected."
+  reload_fail: "Database not configured properly."
+  players_only: "This command can only be used by players."
+  db_error: "An error occurred while fetching the item list."
+  db_not_connected: "Database not connected."

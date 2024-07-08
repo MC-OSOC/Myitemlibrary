@@ -1,0 +1,13 @@
+name: my-item-library
+version: '${project.version}'
+main: org.cakedek.myitemlibrary.My_item_library
+api-version: '1.20'
+commands:
+  my-library-reload:
+    description: Reloads the MyItemLibrary plugin
+    usage: /<command>
+    permission: my_item_library.admin.reload
+    hidden: true
+  my-library:
+    description: Opens the library GUI
+    usage: /<command>
