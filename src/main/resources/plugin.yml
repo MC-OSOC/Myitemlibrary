@@ -1,6 +1,6 @@
-name: my-item-library
+name: MyItemLibrary
 version: '${project.version}'
-main: org.cakedek.myitemlibrary.My_item_library
+main: org.cakedek.myitemlibrary.MyItemLibrary
 api-version: '1.20'
 commands:
   my-library-reload:

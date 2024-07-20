@@ -1,11 +1,30 @@
-gui:
-  title: "คลังของฉัน - หน้า %d"
-  prev_page: "< หน้าก่อนหน้า"
-  next_page: "หน้าถัดไป >"
-  item_received: "คุณได้รับไอเทม: %s"
+language:
+  lang: "ภาษาไทย"
+
 messages:
-  reload_success: "โหลดปลั๊กอินใหม่และเชื่อมต่อฐานข้อมูลสำเร็จ"
-  reload_fail: "การตั้งค่าฐานข้อมูลไม่ถูกต้อง"
-  players_only: "คำสั่งนี้ใช้ได้เฉพาะผู้เล่นเท่านั้น"
-  db_error: "เกิดข้อผิดพลาดขณะดึงรายการไอเทม"
-  db_not_connected: "ไม่สามารถเชื่อมต่อฐานข้อมูลได้"
+  players_only: "&cคำสั่งนี้สามารถใช้ได้เฉพาะผู้เล่นเท่านั้น"
+  db_error: "&cเกิดข้อผิดพลาดในการเชื่อมต่อกับฐานข้อมูล โปรดติดต่อผู้ดูแลระบบ"
+  db_not_connected: "&cไม่สามารถเชื่อมต่อกับฐานข้อมูลได้ โปรดติดต่อผู้ดูแลระบบ"
+  reload_fail: "&cไม่สามารถโหลดปลั๊กอินใหม่ได้ โปรดตรวจสอบ console สำหรับรายละเอียดเพิ่มเติม"
+  enter_search_term: "&aโปรดพิมพ์คำค้นหาในแชท"
+  search_applied: "&aกำลังค้นหา: &e%s"
+  search_cancelled: "&cยกเลิกการค้นหาแล้ว"
+  search_cleared: "&aล้างการค้นหาแล้ว"
+
+gui:
+  title: "คลังไอเทมของฉัน - หน้า %d"
+  prev_page: "&a<<< หน้าก่อนหน้า"
+  next_page: "&aหน้าถัดไป >>>"
+  search: "&eค้นหา"
+  current_search: "&7การค้นหาปัจจุบัน: &f%s"
+  left_click_to_search: "&aคลิกซ้ายเพื่อค้นหา"
+  right_click_to_clear: "&cคลิกขวาเพื่อล้างการค้นหา"
+  switch_language: "&bเปลี่ยนภาษา"
+  item_received: "&aคุณได้รับ &e%s &aแล้ว"
+  settings: "&fตั้งค่า"
+
+settings:
+  title: "ตั้งค่า"
+  back:
+    name: "กลับ"
+    description: "กลับไปยังหน้าหลัก"

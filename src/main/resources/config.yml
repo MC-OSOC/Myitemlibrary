@@ -1,3 +1,4 @@
+c-database-mode: MySQL # or Local
 c-database:
   host: "127.0.0.1"
   port: 3306
@@ -5,11 +6,10 @@ c-database:
   password: ""
   database: "cococo"
 
-c-name-gui: "My Library"
-
-
 c-api:
   c-api-enable: false
   c-api-host: 0.0.0.0
   c-api-port: 1558
-  c-api-key: "467e30ac03c7f19bc9051f9c700b06f354b78be42c156ec29cf81658ac6a52cc"
+  c-api-key: ""
+
+default-language: en_US

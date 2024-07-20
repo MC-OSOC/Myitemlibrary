@@ -1,11 +1,30 @@
-gui:
-  title: "My Library - Page %d"
-  prev_page: "< Previous Page"
-  next_page: "Next Page >"
-  item_received: "You have received the item: %s"
+language:
+  lang: "English"
+
 messages:
-  reload_success: "Plugin reloaded and database connected."
-  reload_fail: "Database not configured properly."
-  players_only: "This command can only be used by players."
-  db_error: "An error occurred while fetching the item list."
-  db_not_connected: "Database not connected."
+  players_only: "&cThis command can only be used by players."
+  db_error: "&cAn error occurred while connecting to the database. Please contact an administrator."
+  db_not_connected: "&cCould not connect to the database. Please contact an administrator."
+  reload_fail: "&cFailed to reload the plugin. Please check the console for more details."
+  enter_search_term: "&aPlease type your search term in the chat."
+  search_applied: "&aSearching for: &e%s"
+  search_cancelled: "&cSearch cancelled."
+  search_cleared: "&aSearch cleared."
+
+gui:
+  title: "My Item Library - Page %d"
+  prev_page: "&a<<< Previous Page"
+  next_page: "&aNext Page >>>"
+  search: "&eSearch"
+  current_search: "&7Current search: &f%s"
+  left_click_to_search: "&aLeft-click to search"
+  right_click_to_clear: "&cRight-click to clear search"
+  switch_language: "&bSwitch Language"
+  item_received: "&aYou have received &e%s"
+  settings: "&fSettings"
+
+settings:
+  title: "settings"
+  back:
+    name: "Back"
+    description: "Return to main menu"
