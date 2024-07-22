@@ -1,15 +1,47 @@
-c-database-mode: MySQL # or Local
-c-database:
-  host: "127.0.0.1"
-  port: 3306
-  username: "root"
-  password: ""
-  database: "cococo"
+c-database-mode: Local # or MySQL
 
+###############################################
+# MySQL Settings (MySQL Mode Only)
+# ตั้งค่า MySQL สำหรับโหมด MySQL เท่านั้น
+###############################################
+c-database:
+  host: "0.0.0.0"
+  port: 3306
+  username: ""
+  password: ""
+  database: ""
+
+###############################################
+# API Settings
+# ตั้งค่า API
+###############################################
 c-api:
   c-api-enable: false
   c-api-host: 0.0.0.0
   c-api-port: 1558
   c-api-key: ""
 
+# DoS Protection Settings
+c-api-dos-protection:
+  enabled: true
+  max-requests-per-minute: 100
+  request-time-window-ms: 60000
+  max-request-size-bytes: 1048576  # 1 MB
+
+cors:
+  allow-origin: "*"
+  allow-methods: "GET,POST,PUT,DELETE,OPTIONS"
+  allow-headers: "*"
+  allow-credentials: true
+  max-age: 1800
+security:
+  content-type-options: "nosniff"
+  strict-transport-security: "max-age=31536000; includeSubDomains"
+
+
+###############################################
+# Default language
+# ภาษาเริ่มต้นของผู้เล่น
+###############################################
 default-language: en_US
+

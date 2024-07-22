@@ -1,8 +1,9 @@
-package org.cakedek.myitemlibrary;
+package org.cakedek.myitemlibrary.config;
 
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
+import org.cakedek.myitemlibrary.MyItemLibrary;
 
 import java.io.File;
 import java.io.IOException;

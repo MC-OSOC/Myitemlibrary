@@ -1,4 +1,4 @@
-package org.cakedek.myitemlibrary;
+package org.cakedek.myitemlibrary.gui;
 
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
@@ -16,6 +16,9 @@ import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.cakedek.myitemlibrary.database.CoDatabase;
+import org.cakedek.myitemlibrary.commands.CommandDetails;
+import org.cakedek.myitemlibrary.MyItemLibrary;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -221,8 +224,8 @@ public class GUIOpen implements CommandExecutor, Listener {
         ItemStack item = new ItemStack(Material.REDSTONE);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
-            meta.setDisplayName(plugin.getTranslation("gui.settings", player));
-            meta.setLore(Collections.singletonList(plugin.getTranslation("gui.settings_description", player)));
+            meta.setDisplayName(plugin.getTranslation("gui.settings.name", player));
+            meta.setLore(Collections.singletonList(plugin.getTranslation("gui.settings.description", player)));
             item.setItemMeta(meta);
         }
         return item;
@@ -238,7 +241,7 @@ public class GUIOpen implements CommandExecutor, Listener {
         player.closeInventory();
         String commandToRun = commandDetails.getCommand().replace("<player>", player.getName());
         Bukkit.dispatchCommand(Bukkit.getConsoleSender(), commandToRun);
-        player.sendMessage(plugin.getTranslation("gui.item_received", clickedItem.getItemMeta().getDisplayName(), player));
+        player.sendMessage(plugin.getTranslation("gui.item_received", Objects.requireNonNull(clickedItem.getItemMeta()).getDisplayName(), player));
 
         updateItemInDatabase(commandDetails.getId());
     }

@@ -1,11 +1,11 @@
-package org.cakedek.myitemlibrary.api;
+package org.cakedek.myitemlibrary.api.handlers;
 
 import com.google.gson.Gson;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
-import org.cakedek.myitemlibrary.Api;
-import org.cakedek.myitemlibrary.CoDatabase;
-import org.cakedek.myitemlibrary.ItemData;
+import org.cakedek.myitemlibrary.api.Api;
+import org.cakedek.myitemlibrary.database.CoDatabase;
+import org.cakedek.myitemlibrary.database.ItemData;
 import org.cakedek.myitemlibrary.MyItemLibrary;
 
 import java.io.IOException;
@@ -13,6 +13,8 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.util.List;
+
+import static org.cakedek.myitemlibrary.util.Input.isValidPlayerName;
 
 public class PlayerItemsHandlers {
     private final MyItemLibrary plugin;
@@ -48,6 +50,11 @@ public class PlayerItemsHandlers {
             }
 
             String playerName = URLDecoder.decode(pathParts[2], StandardCharsets.UTF_8);
+
+            if (!isValidPlayerName(playerName)) {
+                api.sendResponse(exchange, 400, "Invalid player name");
+                return;
+            }
 
             try {
                 List<ItemData> items = database.getItemsByPlayer(playerName);

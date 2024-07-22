@@ -1,8 +1,10 @@
-package org.cakedek.myitemlibrary;
+package org.cakedek.myitemlibrary.commands;
 
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
+import org.cakedek.myitemlibrary.database.CoDatabase;
+import org.cakedek.myitemlibrary.MyItemLibrary;
 
 public class CommandHandler implements CommandExecutor {
     private final MyItemLibrary plugin;

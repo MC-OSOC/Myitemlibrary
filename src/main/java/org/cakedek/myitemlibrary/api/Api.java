@@ -1,42 +1,46 @@
-package org.cakedek.myitemlibrary;
+package org.cakedek.myitemlibrary.api;
 
 import com.sun.net.httpserver.HttpExchange;
-import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
-import org.bukkit.Bukkit;
 import org.bukkit.configuration.file.FileConfiguration;
 import com.google.gson.*;
-import org.bukkit.entity.Player;
-import org.cakedek.myitemlibrary.api.*;
+import org.cakedek.myitemlibrary.config.ApiConfig;
+import org.cakedek.myitemlibrary.database.CoDatabase;
+import org.cakedek.myitemlibrary.MyItemLibrary;
+import org.cakedek.myitemlibrary.api.handlers.*;
+import org.cakedek.myitemlibrary.util.RateLimiter;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
-import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
-import java.sql.SQLException;
-import java.util.List;
 
 public class Api {
     private final MyItemLibrary plugin;
-    private final CoDatabase database;
     private HttpServer server;
     private final Gson gson;
     private String apiKey;
+    private final RateLimiter rateLimiter;
+    private final boolean dosProtectionEnabled;
+    private final int maxRequestSizeBytes;
 
-    private PlayerItemsHandlers playerItemsHandlers;
-    private AddItemHandlers addItemHandlers;
-    private AddItemAllHandlers addItemAllHandlers;
-    private AddItemOnlineHandlers addItemOnlineHandlers;
-    private GetShowAllItemsHandlers getShowAllItemsHandlers;
-    private ItemOperationsHandlers itemOperationsHandlers;
+    private final PlayerItemsHandlers playerItemsHandlers;
+    private final AddItemHandlers addItemHandlers;
+    private final AddItemAllHandlers addItemAllHandlers;
+    private final AddItemOnlineHandlers addItemOnlineHandlers;
+    private final GetShowAllItemsHandlers getShowAllItemsHandlers;
+    private final ItemOperationsHandlers itemOperationsHandlers;
 
     public Api(MyItemLibrary plugin) {
         this.plugin = plugin;
-        this.database = plugin.getDatabase();
+        CoDatabase database = plugin.getDatabase();
         this.gson = new GsonBuilder().disableHtmlEscaping().create();
+
+        this.dosProtectionEnabled = plugin.isDosProtectionEnabled();
+        this.maxRequestSizeBytes = plugin.getMaxRequestSizeBytes();
+        this.rateLimiter = new RateLimiter(plugin.getMaxRequestsPerMinute(), plugin.getRequestTimeWindowMs());
 
         // Initialize all handlers
         this.playerItemsHandlers = new PlayerItemsHandlers(plugin, database, this, gson);
@@ -59,6 +63,32 @@ public class Api {
 
         try {
             server = HttpServer.create(new InetSocketAddress(host, port), 0);
+
+            server.createContext("/", exchange -> {
+                if (dosProtectionEnabled) {
+                    String remoteAddress = exchange.getRemoteAddress().getAddress().getHostAddress();
+                    if (!rateLimiter.allowRequest(remoteAddress)) {
+                        sendResponse(exchange, 429, "Too Many Requests");
+                        return;
+                    }
+
+                    if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                        int contentLength = Integer.parseInt(exchange.getRequestHeaders().getFirst("Content-length"));
+                        if (contentLength > maxRequestSizeBytes) {
+                            sendResponse(exchange, 413, "Request Entity Too Large");
+                            return;
+                        }
+                    }
+                }
+                ApiConfig apiConfig = plugin.getApiConfig();
+                exchange.getResponseHeaders().add("Access-Control-Allow-Origin", apiConfig.getCorsAllowOrigin());
+                exchange.getResponseHeaders().add("Access-Control-Allow-Methods", apiConfig.getCorsAllowMethods());
+                exchange.getResponseHeaders().add("Access-Control-Allow-Headers", apiConfig.getCorsAllowHeaders());
+                exchange.getResponseHeaders().add("Access-Control-Allow-Credentials", Boolean.toString(apiConfig.getCorsAllowCredentials()));
+                exchange.getResponseHeaders().add("Access-Control-Max-Age", Integer.toString(apiConfig.getCorsMaxAge()));
+                exchange.getResponseHeaders().add("X-Content-Type-Options", apiConfig.getContentTypeOptions());
+                exchange.getResponseHeaders().add("Strict-Transport-Security", apiConfig.getStrictTransportSecurity());
+            });
             server.createContext("/items/", playerItemsHandlers.new PlayerItemsHandler());
             server.createContext("/add-item", addItemHandlers.new AddItemHandler());
             server.createContext("/add-item-all", addItemAllHandlers.new AddItemAllHandler());
@@ -85,7 +115,7 @@ public class Api {
         return !apiKey.equals(requestApiKey);
     }
 
-    public JsonObject parseRequestBody(InputStream requestBody) throws IOException {
+    public JsonObject parseRequestBody(InputStream requestBody) {
         InputStreamReader reader = new InputStreamReader(requestBody, StandardCharsets.UTF_8);
         return gson.fromJson(reader, JsonObject.class);
     }

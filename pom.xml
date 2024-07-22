@@ -6,7 +6,7 @@
 
   <groupId>org.cakedek</groupId>
   <artifactId>my-item-library</artifactId>
-  <version>1.0-reb</version>
+  <version>1.0-preview</version>
   <packaging>jar</packaging>
 
   <name>my-item-library</name>

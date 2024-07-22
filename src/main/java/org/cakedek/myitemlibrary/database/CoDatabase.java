@@ -1,4 +1,6 @@
-package org.cakedek.myitemlibrary;
+package org.cakedek.myitemlibrary.database;
+
+import org.cakedek.myitemlibrary.MyItemLibrary;
 
 import java.sql.*;
 import java.util.ArrayList;
@@ -222,9 +224,10 @@ public class CoDatabase {
 
 
     public ResultSet getListItemsByPlayerAndEnabled(String player) throws SQLException {
-        String querySQL = "SELECT * FROM co_list_item WHERE player = '" + player + "' AND enable = 1";
-        Statement stmt = connection.createStatement();
-        return stmt.executeQuery(querySQL);
+        String querySQL = "SELECT * FROM co_list_item WHERE player = ? AND enable = 1";
+        PreparedStatement pstmt = connection.prepareStatement(querySQL);
+        pstmt.setString(1, player);
+        return pstmt.executeQuery();
     }
 
     public void updateItemEnabled(int id, boolean enabled) throws SQLException {
@@ -241,6 +244,4 @@ public class CoDatabase {
             pstmt.executeUpdate();
         }
     }
-
-
 }

@@ -1,4 +1,4 @@
-package org.cakedek.myitemlibrary;
+package org.cakedek.myitemlibrary.database;
 
 public class ItemData {
     private int id;

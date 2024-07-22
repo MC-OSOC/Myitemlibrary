@@ -1,5 +1,5 @@
 language:
-  lang: "English"
+  lang: "English (US)"
 
 messages:
   players_only: "&cThis command can only be used by players."
@@ -21,10 +21,18 @@ gui:
   right_click_to_clear: "&cRight-click to clear search"
   switch_language: "&bSwitch Language"
   item_received: "&aYou have received &e%s"
-  settings: "&fSettings"
+  settings:
+    name: "&fSettings"
+    description: "§eSettings for admin only Normal players will not see this menu."
 
 settings:
   title: "settings"
+  Apply_and_reload:
+    name: "§eApply and reload"
+    description: "§a[Right click]§f Reload Server"
   back:
-    name: "Back"
-    description: "Return to main menu"
+    name: "&fBack"
+    description: "&fReturn to main menu"
+
+settings_messages:
+  applying_changes: "&aApplying changes and preparing to reload..."

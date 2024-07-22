@@ -1,17 +1,27 @@
 package org.cakedek.myitemlibrary;
 
 import org.bukkit.ChatColor;
+import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Listener;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.plugin.PluginManager;
+import org.cakedek.myitemlibrary.api.Api;
+import org.cakedek.myitemlibrary.commands.CommandDetails;
+import org.cakedek.myitemlibrary.commands.CommandHandler;
+import org.cakedek.myitemlibrary.config.ApiConfig;
+import org.cakedek.myitemlibrary.database.CoDatabase;
+import org.cakedek.myitemlibrary.gui.GUIOpen;
+import org.cakedek.myitemlibrary.gui.GUISettings;
+import org.cakedek.myitemlibrary.config.PlayerConfig;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.*;
 
+@SuppressWarnings("ALL")
 public final class MyItemLibrary extends JavaPlugin implements Listener {
     // Fields
     private PlayerConfig playerConfigHandler;
@@ -24,14 +34,29 @@ public final class MyItemLibrary extends JavaPlugin implements Listener {
     private Map<String, YamlConfiguration> languageFiles;
     private Map<UUID, Boolean> playerSearchMode;
 
+    private String pluginVersion;
+
+    private boolean dosProtectionEnabled;
+    private int maxRequestsPerMinute;
+    private long requestTimeWindowMs;
+    private int maxRequestSizeBytes;
+
+    private ApiConfig apiConfig;
+
+
     // Plugin lifecycle methods
     @Override
     public void onEnable() {
         initializePlugin();
         setupCommands();
         registerEventListeners();
+        loadDosProtectionConfig();
+        this.pluginVersion = getDescription().getVersion();
         this.api = new Api(this);
-        api.startServer();
+
+        if (getConfig().getBoolean("c-api.c-api-enable", false)) {
+            api.startServer();
+        }
 
         if (!setupDatabase()) {
             getLogger().severe("Failed to setup database. Disabling plugin.");
@@ -234,6 +259,47 @@ public final class MyItemLibrary extends JavaPlugin implements Listener {
         return playerConfigHandler.getPlayerLanguage(player);
     }
 
+    // API
+    private void loadApiConfig() {
+        FileConfiguration config = getConfig();
+        this.apiConfig = new ApiConfig.Builder()
+                .corsAllowOrigin(config.getString("c-api.cors.allow-origin", "*"))
+                .corsAllowMethods(config.getString("c-api.cors.allow-methods", "GET,POST,PUT,DELETE,OPTIONS"))
+                .corsAllowHeaders(config.getString("c-api.cors.allow-headers", "*"))
+                .corsAllowCredentials(config.getBoolean("c-api.cors.allow-credentials", true))
+                .corsMaxAge(config.getInt("c-api.cors.max-age", 1800))
+                .contentTypeOptions(config.getString("c-api.security.content-type-options", "nosniff"))
+                .strictTransportSecurity(config.getString("c-api.security.strict-transport-security", "max-age=31536000; includeSubDomains"))
+                .build();
+    }
+
+    public ApiConfig getApiConfig() {
+        return apiConfig;
+    }
+
+    private void loadDosProtectionConfig() {
+        FileConfiguration config = getConfig();
+        dosProtectionEnabled = config.getBoolean("dos-protection.enabled", true);
+        maxRequestsPerMinute = config.getInt("dos-protection.max-requests-per-minute", 100);
+        requestTimeWindowMs = config.getLong("dos-protection.request-time-window-ms", 60000);
+        maxRequestSizeBytes = config.getInt("dos-protection.max-request-size-bytes", 1048576);
+
+        if (maxRequestsPerMinute <= 0) {
+            getLogger().warning("Invalid max-requests-per-minute value. Setting to default (100).");
+            maxRequestsPerMinute = 100;
+        }
+        if (requestTimeWindowMs <= 0) {
+            getLogger().warning("Invalid request-time-window-ms value. Setting to default (60000).");
+            requestTimeWindowMs = 60000;
+        }
+        if (maxRequestSizeBytes <= 0) {
+            getLogger().warning("Invalid max-request-size-bytes value. Setting to default (1048576).");
+            maxRequestSizeBytes = 1048576;
+        }
+    }
+
+
+
     // Getters
     public CoDatabase getDatabase() {
         return database;
@@ -249,6 +315,30 @@ public final class MyItemLibrary extends JavaPlugin implements Listener {
 
     public GUIOpen getGuiOpen() {
         return guiOpen;
+    }
+
+    public Api getApi() {
+        return api;
+    }
+
+    public boolean isDosProtectionEnabled() {
+        return dosProtectionEnabled;
+    }
+
+    public int getMaxRequestsPerMinute() {
+        return maxRequestsPerMinute;
+    }
+
+    public long getRequestTimeWindowMs() {
+        return requestTimeWindowMs;
+    }
+
+    public int getMaxRequestSizeBytes() {
+        return maxRequestSizeBytes;
+    }
+
+    public String getPluginVersion() {
+        return pluginVersion;
     }
 
     // Player search mode methods

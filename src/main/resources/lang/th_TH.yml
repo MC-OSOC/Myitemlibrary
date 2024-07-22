@@ -21,10 +21,18 @@ gui:
   right_click_to_clear: "&cคลิกขวาเพื่อล้างการค้นหา"
   switch_language: "&bเปลี่ยนภาษา"
   item_received: "&aคุณได้รับ &e%s &aแล้ว"
-  settings: "&fตั้งค่า"
+  settings:
+    name: "&fตั้งค่า"
+    description: "§eการตั้งค่าสำหรับผู้ดูแลระบบเท่านั้น ผู้เล่นปกติจะไม่เห็นเมนูนี้"
 
 settings:
   title: "ตั้งค่า"
+  Apply_and_reload:
+    name: "§eนำไปใช้และโหลดใหม่"
+    description: "§a[คลิกขวา]§f Reload Server"
   back:
-    name: "กลับ"
-    description: "กลับไปยังหน้าหลัก"
+    name: "&fกลับ"
+    description: "&fกลับไปยังหน้าหลัก"
+
+settings_messages:
+  applying_changes: "&aกำลังใช้การเปลี่ยนแปลงและเตรียมรีโหลด..."

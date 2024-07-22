@@ -1,4 +1,4 @@
-package org.cakedek.myitemlibrary;
+package org.cakedek.myitemlibrary.commands;
 
 public class CommandDetails {
     private final int id;

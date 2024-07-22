@@ -1,11 +1,11 @@
-package org.cakedek.myitemlibrary.api;
+package org.cakedek.myitemlibrary.api.handlers;
 
 import com.google.gson.Gson;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
-import org.cakedek.myitemlibrary.Api;
-import org.cakedek.myitemlibrary.CoDatabase;
-import org.cakedek.myitemlibrary.ItemData;
+import org.cakedek.myitemlibrary.api.Api;
+import org.cakedek.myitemlibrary.database.CoDatabase;
+import org.cakedek.myitemlibrary.database.ItemData;
 import org.cakedek.myitemlibrary.MyItemLibrary;
 
 import java.io.IOException;
