@@ -263,13 +263,13 @@ public final class MyItemLibrary extends JavaPlugin implements Listener {
     private void loadApiConfig() {
         FileConfiguration config = getConfig();
         this.apiConfig = new ApiConfig.Builder()
-                .corsAllowOrigin(config.getString("c-api.cors.allow-origin", "*"))
-                .corsAllowMethods(config.getString("c-api.cors.allow-methods", "GET,POST,PUT,DELETE,OPTIONS"))
-                .corsAllowHeaders(config.getString("c-api.cors.allow-headers", "*"))
-                .corsAllowCredentials(config.getBoolean("c-api.cors.allow-credentials", true))
-                .corsMaxAge(config.getInt("c-api.cors.max-age", 1800))
-                .contentTypeOptions(config.getString("c-api.security.content-type-options", "nosniff"))
-                .strictTransportSecurity(config.getString("c-api.security.strict-transport-security", "max-age=31536000; includeSubDomains"))
+                .corsAllowOrigin(config.getString("c-cors.allow-origin", "*"))
+                .corsAllowMethods(config.getString("c-cors.allow-methods", "GET,POST,PUT,DELETE,OPTIONS"))
+                .corsAllowHeaders(config.getString("c-cors.allow-headers", "*"))
+                .corsAllowCredentials(config.getBoolean("c-cors.allow-credentials", true))
+                .corsMaxAge(config.getInt("c-cors.max-age", 1800))
+                .contentTypeOptions(config.getString("c-security.content-type-options", "nosniff"))
+                .strictTransportSecurity(config.getString("c-security.strict-transport-security", "max-age=31536000; includeSubDomains"))
                 .build();
     }
 
@@ -279,10 +279,10 @@ public final class MyItemLibrary extends JavaPlugin implements Listener {
 
     private void loadDosProtectionConfig() {
         FileConfiguration config = getConfig();
-        dosProtectionEnabled = config.getBoolean("dos-protection.enabled", true);
-        maxRequestsPerMinute = config.getInt("dos-protection.max-requests-per-minute", 100);
-        requestTimeWindowMs = config.getLong("dos-protection.request-time-window-ms", 60000);
-        maxRequestSizeBytes = config.getInt("dos-protection.max-request-size-bytes", 1048576);
+        dosProtectionEnabled = config.getBoolean("c-api-dos-protection.enabled", true);
+        maxRequestsPerMinute = config.getInt("c-api-dos-protection.max-requests-per-minute", 100);
+        requestTimeWindowMs = config.getLong("c-api-dos-protection.request-time-window-ms", 60000);
+        maxRequestSizeBytes = config.getInt("c-api-dos-protection.max-request-size-bytes", 1048576);
 
         if (maxRequestsPerMinute <= 0) {
             getLogger().warning("Invalid max-requests-per-minute value. Setting to default (100).");

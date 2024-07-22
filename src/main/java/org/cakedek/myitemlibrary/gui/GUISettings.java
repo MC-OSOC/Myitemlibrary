@@ -56,7 +56,7 @@ public class GUISettings implements Listener {
         // รีเซ็ตไฟล์ภาษา
         gui.setItem(3, createSettingsItem(Material.PAPER, "§fReset Language", "§a[Right click] §fReset language files to default"));
 
-        gui.setItem(6, createSettingsItem(Material.PAPER, "§fMyItemLibrany", "Version" + plugin.getPluginVersion()));
+        gui.setItem(6, createSettingsItem(Material.PAPER, "§fMyItemLibrany", "§aVersion §f" + plugin.getPluginVersion()));
 
         // นำไปใช้งานและเริ่มต้นใหม่
         gui.setItem(7,createSettingsItem(Material.EMERALD,
