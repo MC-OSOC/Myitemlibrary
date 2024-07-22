@@ -1,6 +1,7 @@
 package org.cakedek.myitemlibrary.api;
 
 import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 import org.bukkit.configuration.file.FileConfiguration;
 import com.google.gson.*;
@@ -64,7 +65,26 @@ public class Api {
         try {
             server = HttpServer.create(new InetSocketAddress(host, port), 0);
 
-            server.createContext("/", exchange -> {
+            createProtectedContext("/items/", playerItemsHandlers.new PlayerItemsHandler());
+            createProtectedContext("/add-item", addItemHandlers.new AddItemHandler());
+            createProtectedContext("/add-item-all", addItemAllHandlers.new AddItemAllHandler());
+            createProtectedContext("/add-item-online", addItemOnlineHandlers.new AddItemOnlineHandler());
+            createProtectedContext("/items", getShowAllItemsHandlers.new GetShowAllItemsHandler());
+            createProtectedContext("/item/", itemOperationsHandlers.new ItemOperationsHandler());
+
+            server.setExecutor(null);
+            server.start();
+            plugin.getLogger().info("API server started on " + host + ":" + port);
+        } catch (IOException e) {
+            plugin.getLogger().severe("Failed to start API server: " + e.getMessage());
+        }
+    }
+
+    private void createProtectedContext(String path, HttpHandler handler) {
+        server.createContext(path, exchange -> {
+            try {
+                plugin.getLogger().info("Received request for path: " + path);
+
                 if (dosProtectionEnabled) {
                     String remoteAddress = exchange.getRemoteAddress().getAddress().getHostAddress();
                     if (!rateLimiter.allowRequest(remoteAddress)) {
@@ -80,28 +100,28 @@ public class Api {
                         }
                     }
                 }
-                ApiConfig apiConfig = plugin.getApiConfig();
-                exchange.getResponseHeaders().add("Access-Control-Allow-Origin", apiConfig.getCorsAllowOrigin());
-                exchange.getResponseHeaders().add("Access-Control-Allow-Methods", apiConfig.getCorsAllowMethods());
-                exchange.getResponseHeaders().add("Access-Control-Allow-Headers", apiConfig.getCorsAllowHeaders());
-                exchange.getResponseHeaders().add("Access-Control-Allow-Credentials", Boolean.toString(apiConfig.getCorsAllowCredentials()));
-                exchange.getResponseHeaders().add("Access-Control-Max-Age", Integer.toString(apiConfig.getCorsMaxAge()));
-                exchange.getResponseHeaders().add("X-Content-Type-Options", apiConfig.getContentTypeOptions());
-                exchange.getResponseHeaders().add("Strict-Transport-Security", apiConfig.getStrictTransportSecurity());
-            });
-            server.createContext("/items/", playerItemsHandlers.new PlayerItemsHandler());
-            server.createContext("/add-item", addItemHandlers.new AddItemHandler());
-            server.createContext("/add-item-all", addItemAllHandlers.new AddItemAllHandler());
-            server.createContext("/add-item-online", addItemOnlineHandlers.new AddItemOnlineHandler());
-            server.createContext("/items", getShowAllItemsHandlers.new GetShowAllItemsHandler());
-            server.createContext("/item/", itemOperationsHandlers.new ItemOperationsHandler());
-            server.setExecutor(null);
-            server.start();
-            plugin.getLogger().info("API server started on " + host + ":" + port);
-        } catch (IOException e) {
-            plugin.getLogger().severe("Failed to start API server: " + e.getMessage());
-        }
+
+                if (validateApiKey(exchange)) {
+                    sendResponse(exchange, 401, "Unauthorized");
+                    return;
+                }
+
+                handler.handle(exchange);
+            } catch (Exception e) {
+                plugin.getLogger().severe("Error handling request for path " + path + ": " + e.getMessage());
+                e.printStackTrace();
+                try {
+                    sendResponse(exchange, 500, "Internal Server Error");
+                } catch (IOException ioe) {
+                    plugin.getLogger().severe("Failed to send error response: " + ioe.getMessage());
+                }
+            } finally {
+                exchange.close();
+            }
+        });
     }
+
+
 
     public void stopServer() {
         if (server != null) {
@@ -122,10 +142,10 @@ public class Api {
 
     public void sendResponse(HttpExchange exchange, int statusCode, String response) throws IOException {
         byte[] responseBytes = response.getBytes(StandardCharsets.UTF_8);
-        exchange.getResponseHeaders().set("Content-Type", "application/json; charset=UTF-8");
         exchange.sendResponseHeaders(statusCode, responseBytes.length);
         try (OutputStream os = exchange.getResponseBody()) {
             os.write(responseBytes);
         }
     }
+
 }

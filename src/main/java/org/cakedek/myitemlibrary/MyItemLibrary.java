@@ -47,12 +47,14 @@ public final class MyItemLibrary extends JavaPlugin implements Listener {
     // Plugin lifecycle methods
     @Override
     public void onEnable() {
+        loadDosProtectionConfig();
         initializePlugin();
         setupCommands();
         registerEventListeners();
-        loadDosProtectionConfig();
+
         this.pluginVersion = getDescription().getVersion();
         this.api = new Api(this);
+
 
         if (getConfig().getBoolean("c-api.c-api-enable", false)) {
             api.startServer();
