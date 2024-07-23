@@ -11,7 +11,6 @@ import org.bukkit.plugin.PluginManager;
 import org.cakedek.myitemlibrary.api.Api;
 import org.cakedek.myitemlibrary.commands.CommandDetails;
 import org.cakedek.myitemlibrary.commands.CommandHandler;
-import org.cakedek.myitemlibrary.config.ApiConfig;
 import org.cakedek.myitemlibrary.database.CoDatabase;
 import org.cakedek.myitemlibrary.gui.GUIOpen;
 import org.cakedek.myitemlibrary.gui.GUISettings;
@@ -40,8 +39,6 @@ public final class MyItemLibrary extends JavaPlugin implements Listener {
     private int maxRequestsPerMinute;
     private long requestTimeWindowMs;
     private int maxRequestSizeBytes;
-
-    private ApiConfig apiConfig;
 
 
     // Plugin lifecycle methods
@@ -259,24 +256,6 @@ public final class MyItemLibrary extends JavaPlugin implements Listener {
             return getConfig().getString("default-language", "en_US");
         }
         return playerConfigHandler.getPlayerLanguage(player);
-    }
-
-    // API
-    private void loadApiConfig() {
-        FileConfiguration config = getConfig();
-        this.apiConfig = new ApiConfig.Builder()
-                .corsAllowOrigin(config.getString("c-cors.allow-origin", "*"))
-                .corsAllowMethods(config.getString("c-cors.allow-methods", "GET,POST,PUT,DELETE,OPTIONS"))
-                .corsAllowHeaders(config.getString("c-cors.allow-headers", "*"))
-                .corsAllowCredentials(config.getBoolean("c-cors.allow-credentials", true))
-                .corsMaxAge(config.getInt("c-cors.max-age", 1800))
-                .contentTypeOptions(config.getString("c-security.content-type-options", "nosniff"))
-                .strictTransportSecurity(config.getString("c-security.strict-transport-security", "max-age=31536000; includeSubDomains"))
-                .build();
-    }
-
-    public ApiConfig getApiConfig() {
-        return apiConfig;
     }
 
     private void loadDosProtectionConfig() {

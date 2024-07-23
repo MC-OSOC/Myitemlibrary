@@ -5,7 +5,6 @@ import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 import org.bukkit.configuration.file.FileConfiguration;
 import com.google.gson.*;
-import org.cakedek.myitemlibrary.config.ApiConfig;
 import org.cakedek.myitemlibrary.database.CoDatabase;
 import org.cakedek.myitemlibrary.MyItemLibrary;
 import org.cakedek.myitemlibrary.api.handlers.*;
@@ -83,8 +82,6 @@ public class Api {
     private void createProtectedContext(String path, HttpHandler handler) {
         server.createContext(path, exchange -> {
             try {
-                plugin.getLogger().info("Received request for path: " + path);
-
                 if (dosProtectionEnabled) {
                     String remoteAddress = exchange.getRemoteAddress().getAddress().getHostAddress();
                     if (!rateLimiter.allowRequest(remoteAddress)) {
