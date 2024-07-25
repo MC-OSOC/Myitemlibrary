@@ -258,6 +258,7 @@ public final class MyItemLibrary extends JavaPlugin implements Listener {
         return playerConfigHandler.getPlayerLanguage(player);
     }
 
+    // DOSss
     private void loadDosProtectionConfig() {
         FileConfiguration config = getConfig();
         dosProtectionEnabled = config.getBoolean("c-api-dos-protection.enabled", true);
@@ -278,8 +279,6 @@ public final class MyItemLibrary extends JavaPlugin implements Listener {
             maxRequestSizeBytes = 1048576;
         }
     }
-
-
 
     // Getters
     public CoDatabase getDatabase() {

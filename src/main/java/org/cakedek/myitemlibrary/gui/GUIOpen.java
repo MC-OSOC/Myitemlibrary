@@ -3,6 +3,7 @@ package org.cakedek.myitemlibrary.gui;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -16,6 +17,8 @@ import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.persistence.PersistentDataContainer;
+import org.bukkit.persistence.PersistentDataType;
 import org.cakedek.myitemlibrary.database.CoDatabase;
 import org.cakedek.myitemlibrary.commands.CommandDetails;
 import org.cakedek.myitemlibrary.MyItemLibrary;
@@ -24,6 +27,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.*;
 
+@SuppressWarnings("ALL")
 public class GUIOpen implements CommandExecutor, Listener {
     private static final int ITEMS_PER_PAGE = 44;
     private static final int INVENTORY_SIZE = 54;
@@ -38,6 +42,7 @@ public class GUIOpen implements CommandExecutor, Listener {
         this.database = plugin.getDatabase();
     }
 
+    @SuppressWarnings("NullableProblems")
     private static class LibraryGUIHolder implements InventoryHolder {
         @Override
         public Inventory getInventory() {
@@ -145,11 +150,11 @@ public class GUIOpen implements CommandExecutor, Listener {
 
     private void addNavigationButtons(Inventory gui, int currentPage, int totalPages) {
         if (currentPage > 0) {
-            gui.setItem(45, createNavigationItem(Material.ARROW, plugin.getTranslation("gui.prev_page", null)));
+            gui.setItem(45, createNavigationItem(Material.ARROW, plugin.getTranslation("gui.prev_page", null), "prev_page"));
         }
 
         if (currentPage < totalPages - 1) {
-            gui.setItem(53, createNavigationItem(Material.ARROW, plugin.getTranslation("gui.next_page", null)));
+            gui.setItem(53, createNavigationItem(Material.ARROW, plugin.getTranslation("gui.next_page", null), "next_page"));
         }
     }
 
@@ -162,11 +167,16 @@ public class GUIOpen implements CommandExecutor, Listener {
         }
     }
 
-    private ItemStack createNavigationItem(Material material, String displayName) {
+    private ItemStack createNavigationItem(Material material, String displayName, String type) {
         ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
             meta.setDisplayName(displayName);
+            meta.getPersistentDataContainer().set(
+                    new NamespacedKey(plugin, "navigation_button"),
+                    PersistentDataType.STRING,
+                    type
+            );
             item.setItemMeta(meta);
         }
         return item;
@@ -257,19 +267,25 @@ public class GUIOpen implements CommandExecutor, Listener {
 
     private void handleNavigationClick(InventoryClickEvent event, Player player) {
         int currentPage = playerPageMap.get(player.getUniqueId());
-        ItemMeta meta = event.getCurrentItem().getItemMeta();
+        ItemStack clickedItem = event.getCurrentItem();
+        ItemMeta meta = clickedItem.getItemMeta();
+
         if (meta == null) {
             return;
         }
 
-        String displayName = meta.getDisplayName();
-        if (displayName.equals(plugin.getTranslation("gui.next_page", player))) {
-            openLibraryGui(player, currentPage + 1);
-        } else if (displayName.equals(plugin.getTranslation("gui.prev_page", player))) {
-            openLibraryGui(player, currentPage - 1);
+        NamespacedKey key = new NamespacedKey(plugin, "navigation_button");
+        PersistentDataContainer container = meta.getPersistentDataContainer();
+
+        if (container.has(key, PersistentDataType.STRING)) {
+            String buttonType = container.get(key, PersistentDataType.STRING);
+            if ("next_page".equals(buttonType)) {
+                openLibraryGui(player, currentPage + 1);
+            } else if ("prev_page".equals(buttonType)) {
+                openLibraryGui(player, currentPage - 1);
+            }
         }
     }
-
     private void handleSearchClick(Player player, InventoryClickEvent event) {
         if (event.isLeftClick()) {
             player.closeInventory();
@@ -296,15 +312,19 @@ public class GUIOpen implements CommandExecutor, Listener {
         ItemStack clickedItem = event.getCurrentItem();
 
         if (clickedItem == null) {
-            clearSearch(player);
-            openLibraryGui(player, 0);
             return;
         }
 
-        switch (clickedItem.getType()) {
-            case ARROW:
+        ItemMeta meta = clickedItem.getItemMeta();
+        if (meta != null) {
+            NamespacedKey key = new NamespacedKey(plugin, "navigation_button");
+            if (meta.getPersistentDataContainer().has(key, PersistentDataType.STRING)) {
                 handleNavigationClick(event, player);
-                break;
+                return;
+            }
+        }
+
+        switch (clickedItem.getType()) {
             case BOOK:
                 plugin.switchLanguage(player);
                 openLibraryGui(player, playerPageMap.get(player.getUniqueId()));
@@ -324,6 +344,7 @@ public class GUIOpen implements CommandExecutor, Listener {
                 break;
         }
     }
+
 
     @EventHandler
     public void onInventoryClose(InventoryCloseEvent event) {

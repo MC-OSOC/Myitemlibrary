@@ -42,13 +42,13 @@ public class GUISettings implements Listener {
     }
 
     public void openSettingsGUI(Player player) {
-        Inventory gui = Bukkit.createInventory(null, 9, plugin.getTranslation("settings.title", player));
+        Inventory gui = Bukkit.createInventory(null, 9, plugin.getTranslation("settings.title", player)+ "( MyItemLibrary " +(plugin.getPluginVersion()+ ")"));
 
         // Toggle auto-update
-        gui.setItem(0, createSettingsItem(Material.REDSTONE_TORCH, "Auto Update", "Toggle automatic updates"));
+        //gui.setItem(0, createSettingsItem(Material.REDSTONE_TORCH, "Auto Update", "Toggle automatic updates"));
 
         // Toggle debug mode
-        gui.setItem(1, createSettingsItem(Material.COMMAND_BLOCK, "Debug Mode", "Toggle debug mode"));
+        //gui.setItem(1, createSettingsItem(Material.COMMAND_BLOCK, "Debug Mode", "Toggle debug mode"));
 
         // เปิดใช้งาน API
         gui.setItem(2, createAPIToggleItem());
@@ -105,12 +105,12 @@ public class GUISettings implements Listener {
             }
         } else if (event.getClick() == ClickType.RIGHT || event.getSlot() == 8) {
             switch (event.getSlot()) {
-                case 0: // Toggle auto-update
+              /*case 0: // Toggle auto-update
                     toggleAutoUpdate(player);
                     break;
                 case 1: // Toggle debug mode
                     toggleDebugMode(player);
-                    break;
+                    break; */
                 case 3: // รีเซ็ตไฟล์ภาษา
                     resetLanguageFiles(player);
                     break;
@@ -127,19 +127,6 @@ public class GUISettings implements Listener {
 
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    private void toggleAutoUpdate(Player player) {
-        boolean currentState = plugin.getConfig().getBoolean("auto-update", true);
-        plugin.getConfig().set("auto-update", !currentState);
-        plugin.saveConfig();
-        player.sendMessage("Auto-update has been " + (!currentState ? "enabled" : "disabled"));
-    }
-
-    private void toggleDebugMode(Player player) {
-        boolean currentState = plugin.getConfig().getBoolean("debug-mode", false);
-        plugin.getConfig().set("debug-mode", !currentState);
-        plugin.saveConfig();
-        player.sendMessage("Debug mode has been " + (!currentState ? "enabled" : "disabled"));
-    }
 
 
     //  API
