@@ -1,6 +1,9 @@
 package org.cakedek.myitemlibrary;
 
 import org.bukkit.ChatColor;
+import org.bukkit.command.Command;
+import org.bukkit.command.CommandSender;
+import org.bukkit.command.PluginCommand;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
@@ -40,6 +43,8 @@ public final class MyItemLibrary extends JavaPlugin implements Listener {
     private long requestTimeWindowMs;
     private int maxRequestSizeBytes;
 
+    private boolean disablePluginPrefixCommands;
+
 
     // Plugin lifecycle methods
     @Override
@@ -48,6 +53,10 @@ public final class MyItemLibrary extends JavaPlugin implements Listener {
         initializePlugin();
         setupCommands();
         registerEventListeners();
+
+
+        saveDefaultConfig();
+        disablePluginPrefixCommands = getConfig().getBoolean("disable-plugin-prefix-commands", false);
 
         this.pluginVersion = getDescription().getVersion();
         this.api = new Api(this);

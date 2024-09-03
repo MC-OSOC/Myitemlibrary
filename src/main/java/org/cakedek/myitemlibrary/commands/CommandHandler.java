@@ -6,6 +6,7 @@ import org.bukkit.command.CommandSender;
 import org.cakedek.myitemlibrary.database.CoDatabase;
 import org.cakedek.myitemlibrary.MyItemLibrary;
 
+@SuppressWarnings("NullableProblems")
 public class CommandHandler implements CommandExecutor {
     private final MyItemLibrary plugin;
     private final CoDatabase database;

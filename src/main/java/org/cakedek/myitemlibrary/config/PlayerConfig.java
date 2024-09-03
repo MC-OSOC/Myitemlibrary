@@ -9,6 +9,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.UUID;
 
+@SuppressWarnings({"ResultOfMethodCallIgnored", "CallToPrintStackTrace"})
 public class PlayerConfig {
     private final MyItemLibrary plugin;
     private final File playerDataFolder;

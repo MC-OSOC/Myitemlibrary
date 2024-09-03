@@ -8,6 +8,9 @@ commands:
     usage: /<command>
     permission: my_item_library.admin.reload
     hidden: true
+    aliases: []
   my-library:
     description: Opens the library GUI
     usage: /<command>
+    aliases:
+       - mylibrary

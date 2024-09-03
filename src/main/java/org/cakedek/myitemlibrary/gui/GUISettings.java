@@ -8,6 +8,7 @@ import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryClickEvent;
@@ -42,7 +43,7 @@ public class GUISettings implements Listener {
     }
 
     public void openSettingsGUI(Player player) {
-        Inventory gui = Bukkit.createInventory(null, 9, plugin.getTranslation("settings.title", player)+ "( MyItemLibrary " +(plugin.getPluginVersion()+ ")"));
+        Inventory gui = Bukkit.createInventory(null, 9, "Settings");
 
         // Toggle auto-update
         //gui.setItem(0, createSettingsItem(Material.REDSTONE_TORCH, "Auto Update", "Toggle automatic updates"));
@@ -56,6 +57,7 @@ public class GUISettings implements Listener {
         // รีเซ็ตไฟล์ภาษา
         gui.setItem(3, createSettingsItem(Material.PAPER, "§fReset Language", "§a[Right click] §fReset language files to default"));
 
+        // แสดงเวอร์ชั่น
         gui.setItem(6, createSettingsItem(Material.PAPER, "§fMyItemLibrany", "§aVersion §f" + plugin.getPluginVersion()));
 
         // นำไปใช้งานและเริ่มต้นใหม่
@@ -84,9 +86,9 @@ public class GUISettings implements Listener {
         return item;
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onInventoryClick(InventoryClickEvent event) {
-        if (!event.getView().getTitle().equals(plugin.getTranslation("settings.title", event.getWhoClicked()))) {
+        if (!event.getView().getTitle().startsWith("Settings")) {
             return;
         }
 
@@ -105,12 +107,6 @@ public class GUISettings implements Listener {
             }
         } else if (event.getClick() == ClickType.RIGHT || event.getSlot() == 8) {
             switch (event.getSlot()) {
-              /*case 0: // Toggle auto-update
-                    toggleAutoUpdate(player);
-                    break;
-                case 1: // Toggle debug mode
-                    toggleDebugMode(player);
-                    break; */
                 case 3: // รีเซ็ตไฟล์ภาษา
                     resetLanguageFiles(player);
                     break;

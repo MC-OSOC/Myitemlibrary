@@ -59,12 +59,11 @@ public class GUIOpen implements CommandExecutor, Listener {
 
         Player player = (Player) sender;
 
-        if (command.getName().equalsIgnoreCase("my-library")) {
-            openLibraryGui(player, 0);
-            return true;
-        }
-        return false;
+        // This will handle 'my-library', 'mylib', and 'ml'
+        openLibraryGui(player, 0);
+        return true;
     }
+
 
     public void openLibraryGui(Player player, int page) {
         if (database == null) {
