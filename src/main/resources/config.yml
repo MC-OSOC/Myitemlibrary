@@ -5,11 +5,14 @@ c-database-mode: Local # or MySQL
 # ตั้งค่า MySQL สำหรับโหมด MySQL เท่านั้น
 ###############################################
 c-database:
-  host: "0.0.0.0"
+  host: "localhost"
   port: 3306
   username: ""
   password: ""
   database: ""
+  # Encrypt the MySQL connection (recommended when the database is on another machine)
+  # เข้ารหัสการเชื่อมต่อ MySQL (แนะนำถ้าฐานข้อมูลอยู่คนละเครื่อง)
+  use-ssl: false
 
 ###############################################
 # API Settings
@@ -17,8 +20,12 @@ c-database:
 ###############################################
 c-api:
   c-api-enable: false
-  c-api-host: 0.0.0.0
+  # 127.0.0.1 = only this machine can call the API. Use 0.0.0.0 only behind a firewall.
+  # 127.0.0.1 = เรียก API ได้เฉพาะเครื่องนี้ ใช้ 0.0.0.0 เฉพาะเมื่อมี firewall ป้องกัน
+  c-api-host: 127.0.0.1
   c-api-port: 1558
+  # Leave empty to auto-generate a strong key when the API starts.
+  # ปล่อยว่างไว้ ระบบจะสร้างคีย์ให้อัตโนมัติตอนเปิด API
   c-api-key: ""
 
 # DoS Protection Settings
@@ -33,4 +40,3 @@ c-api-dos-protection:
 # ภาษาเริ่มต้นของผู้เล่น
 ###############################################
 default-language: en_US
-

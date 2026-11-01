@@ -2,6 +2,7 @@ name: MyItemLibrary
 version: '${project.version}'
 main: org.cakedek.myitemlibrary.MyItemLibrary
 api-version: '1.20'
+description: Per-player item library with GUI and REST API
 commands:
   my-library-reload:
     description: Reloads the MyItemLibrary plugin
@@ -12,5 +13,18 @@ commands:
   my-library:
     description: Opens the library GUI
     usage: /<command>
+    permission: my_item_library.use
     aliases:
-       - mylibrary
+       - mylibrary13
+permissions:
+  my_item_library.use:
+    description: Open your own item library
+    default: true
+  my_item_library.admin:
+    description: Access the settings menu (toggle API, generate API key, reload the plugin)
+    default: op
+    children:
+      my_item_library.admin.reload: true
+  my_item_library.admin.reload:
+    description: Use /my-library-reload
+    default: op

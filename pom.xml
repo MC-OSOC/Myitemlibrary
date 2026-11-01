@@ -6,13 +6,23 @@
 
   <groupId>org.cakedek</groupId>
   <artifactId>my-item-library</artifactId>
-  <version>1.1-preview</version>
+  <version>1.3</version>
   <packaging>jar</packaging>
 
   <name>my-item-library</name>
 
   <properties>
-    <java.version>1.8</java.version>
+    <!--
+      Bytecode level. Java 21 bytecode runs on every supported server:
+      Minecraft 1.20.5 - 1.21.x (Java 21) and 26.x (Java 25).
+      Building needs JDK 25 because paper-api 26.x is compiled for Java 25.
+    -->
+    <java.release>21</java.release>
+    <!--
+      Compile against the newest API so removed/changed methods show up as build errors.
+      Pinned to a stable build for reproducible builds; bump when a newer stable build is out.
+    -->
+    <paper.version>26.3.build.235-stable</paper.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
   </properties>
 
@@ -20,25 +30,37 @@
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-compiler-plugin</artifactId>
-        <version>3.8.1</version>
-        <configuration>
-          <source>16</source>
-          <target>16</target>
-        </configuration>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <version>3.6.2</version>
+        <executions>
+          <execution>
+            <id>require-jdk-25</id>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <configuration>
+              <rules>
+                <requireJavaVersion>
+                  <version>[25,)</version>
+                  <message>Build with JDK 25 or newer (paper-api 26.x is compiled for Java 25). The plugin itself still runs on Java 21 servers.</message>
+                </requireJavaVersion>
+              </rules>
+            </configuration>
+          </execution>
+        </executions>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-shade-plugin</artifactId>
-        <version>3.2.4</version>
-        <executions>
-          <execution>
-            <phase>package</phase>
-            <goals>
-              <goal>shade</goal>
-            </goals>
-          </execution>
-        </executions>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.16.0</version>
+        <configuration>
+          <release>${java.release}</release>
+          <compilerArgs>
+            <!-- Show deprecated/for-removal API usage so future Paper/Spigot removals are visible early. -->
+            <arg>-Xlint:deprecation</arg>
+            <arg>-Xlint:removal</arg>
+          </compilerArgs>
+        </configuration>
       </plugin>
     </plugins>
     <resources>
@@ -51,26 +73,22 @@
 
   <repositories>
       <repository>
-          <id>spigotmc-repo</id>
-          <url>https://hub.spigotmc.org/nexus/content/repositories/snapshots/</url>
-      </repository>
-      <repository>
-          <id>sonatype</id>
-          <url>https://oss.sonatype.org/content/groups/public/</url>
+          <id>papermc</id>
+          <url>https://repo.papermc.io/repository/maven-public/</url>
       </repository>
   </repositories>
 
   <dependencies>
+      <!--
+        Paper API includes the full Bukkit/Spigot API, so the same jar runs on Spigot and Paper.
+        Paper-only classes are used only in PaperChatListener, which is loaded only on Paper.
+        Gson, BungeeCord chat and the MySQL/SQLite JDBC drivers are provided by the server.
+      -->
       <dependency>
-          <groupId>org.spigotmc</groupId>
-          <artifactId>spigot-api</artifactId>
-          <version>1.20.6-R0.1-SNAPSHOT</version>
+          <groupId>io.papermc.paper</groupId>
+          <artifactId>paper-api</artifactId>
+          <version>${paper.version}</version>
           <scope>provided</scope>
-      </dependency>
-      <dependency>
-          <groupId>com.googlecode.json-simple</groupId>
-          <artifactId>json-simple</artifactId>
-          <version>1.1.1</version>
       </dependency>
   </dependencies>
 </project>
