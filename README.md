@@ -14,8 +14,21 @@ My library ready-to-use commands in a MySQL repository for Minecraft Server
 
 ## Requirements
 
-- Spigot or Paper **1.20.5 or newer** (tested API: 1.21.x; newer releases are supported as long as the Bukkit API stays compatible)
-- **Java 21** or newer
+| Server | Minecraft | Java |
+|---|---|---|
+| **Paper** (and forks like Purpur) | 1.20.5 – **26.3** | 21 (1.20.5–1.21.x), 25 (26.x) |
+| **Spigot** | 1.20.5 – **26.3** | 21 (1.20.5–1.21.x), 25 (26.x) |
+
+One jar works on both. On Paper the plugin uses Paper's own chat event for search input.
+Folia is not supported.
+
+## Building
+
+Requires **JDK 25** (paper-api 26.x is compiled for Java 25). The plugin itself is built as Java 21 bytecode so it still runs on 1.20.5+ servers.
+
+```bash
+mvn package
+```
 
 ## Installation
 
@@ -61,7 +74,7 @@ For detailed information on request parameters, response formats, and examples, 
 ## Permissions
 
 - `my_item_library.use` - Open your own library (default: everyone)
-- `my_item_library.admin` - Settings menu: toggle API, generate API key, reload server (default: op)
+- `my_item_library.admin` - Settings menu: toggle API, generate API key, reload the plugin (default: op)
 - `my_item_library.admin.reload` - Allows use of the `/my-library-reload` command (default: op)
 
 ## Support

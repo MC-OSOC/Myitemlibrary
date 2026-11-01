@@ -29,7 +29,7 @@ settings:
   title: "ตั้งค่า"
   Apply_and_reload:
     name: "§eนำไปใช้และโหลดใหม่"
-    description: "§a[คลิกขวา]§f Reload Server"
+    description: "§a[คลิกขวา]§f โหลดปลั๊กอิน MyItemLibrary ใหม่"
   back:
     name: "&fกลับ"
     description: "&fกลับไปยังหน้าหลัก"

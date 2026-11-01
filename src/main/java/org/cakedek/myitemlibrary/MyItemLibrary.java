@@ -12,6 +12,9 @@ import org.cakedek.myitemlibrary.config.PlayerConfig;
 import org.cakedek.myitemlibrary.database.CoDatabase;
 import org.cakedek.myitemlibrary.gui.GUIOpen;
 import org.cakedek.myitemlibrary.gui.GUISettings;
+import org.cakedek.myitemlibrary.gui.PaperChatListener;
+import org.cakedek.myitemlibrary.gui.SpigotChatListener;
+import org.cakedek.myitemlibrary.util.Platform;
 
 import java.io.File;
 import java.util.HashMap;
@@ -64,6 +67,9 @@ public final class MyItemLibrary extends JavaPlugin {
         PluginManager pm = getServer().getPluginManager();
         pm.registerEvents(guiOpen, this);
         pm.registerEvents(guiSettings, this);
+        // Each platform gets its own chat listener; PaperChatListener is never loaded on Spigot.
+        pm.registerEvents(Platform.PAPER ? new PaperChatListener(guiOpen) : new SpigotChatListener(guiOpen), this);
+        getLogger().info("Running on " + Platform.name() + " " + getServer().getBukkitVersion());
 
         api.startServer();
     }

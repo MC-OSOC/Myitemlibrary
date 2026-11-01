@@ -203,13 +203,20 @@ public class GUISettings implements Listener {
         openSettingsGUI(player);
     }
 
+    /**
+     * Reloads this plugin only (config, languages, database, API).
+     * A full Bukkit.reload() is not supported on Paper and breaks many other plugins.
+     */
     private void applyAndReload(Player player) {
         player.closeInventory();
         player.sendMessage(plugin.getTranslation("settings_messages.applying_changes", player));
-        plugin.getLogger().warning(player.getName() + " triggered a server reload from the settings menu.");
+        plugin.getLogger().info(player.getName() + " reloaded MyItemLibrary from the settings menu.");
         Bukkit.getScheduler().runTask(plugin, () -> {
-            Bukkit.reload();
-            player.sendMessage(ChatColor.GREEN + "RELOAD COMPLETE");
+            if (plugin.reloadPlugin()) {
+                player.sendMessage(ChatColor.GREEN + "RELOAD COMPLETE");
+            } else {
+                player.sendMessage(plugin.getTranslation("messages.reload_fail", player));
+            }
         });
     }
 

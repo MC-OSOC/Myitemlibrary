@@ -15,7 +15,6 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
-import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
@@ -333,16 +332,17 @@ public class GUIOpen implements CommandExecutor, Listener {
         }
     }
 
-    @EventHandler(priority = EventPriority.LOWEST)
-    public void onPlayerChat(AsyncPlayerChatEvent event) {
-        Player player = event.getPlayer();
+    /**
+     * Called from the chat listener (Paper or Spigot, possibly on an async thread).
+     * Returns true if the message was a search term and the chat event should be cancelled.
+     */
+    public boolean handleSearchInput(Player player, String message) {
         if (!plugin.isPlayerInSearchMode(player.getUniqueId())) {
-            return;
+            return false;
         }
-        event.setCancelled(true);
         plugin.setPlayerInSearchMode(player.getUniqueId(), false);
 
-        String raw = ChatColor.stripColor(ChatColor.translateAlternateColorCodes('&', event.getMessage()));
+        String raw = ChatColor.stripColor(ChatColor.translateAlternateColorCodes('&', message == null ? "" : message));
         String searchTerm = raw == null ? "" : raw.trim();
         if (searchTerm.length() > MAX_SEARCH_LENGTH) {
             searchTerm = searchTerm.substring(0, MAX_SEARCH_LENGTH);
@@ -357,6 +357,7 @@ public class GUIOpen implements CommandExecutor, Listener {
             player.sendMessage(plugin.getTranslation("messages.search_applied", applied, player));
             openLibraryGui(player, 0);
         });
+        return true;
     }
 
     @EventHandler

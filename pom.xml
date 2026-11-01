@@ -6,17 +6,20 @@
 
   <groupId>org.cakedek</groupId>
   <artifactId>my-item-library</artifactId>
-  <version>1.2</version>
+  <version>1.3</version>
   <packaging>jar</packaging>
 
   <name>my-item-library</name>
 
   <properties>
-    <!-- Minecraft 1.20.5+ requires Java 21, newer releases run Java 21 bytecode as well. -->
-    <java.version>21</java.version>
-    <maven.compiler.release>${java.version}</maven.compiler.release>
-    <!-- API used at compile time only. The plugin also runs on newer servers. -->
-    <spigot.version>1.21.11-R0.1-SNAPSHOT</spigot.version>
+    <!--
+      Bytecode level. Java 21 bytecode runs on every supported server:
+      Minecraft 1.20.5 - 1.21.x (Java 21) and 26.x (Java 25).
+      Building needs JDK 25 because paper-api 26.x is compiled for Java 25.
+    -->
+    <java.release>21</java.release>
+    <!-- Compile against the newest API so removed/changed methods show up as build errors. -->
+    <paper.version>[26.3.build,26.4)</paper.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
   </properties>
 
@@ -24,10 +27,31 @@
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <version>3.6.2</version>
+        <executions>
+          <execution>
+            <id>require-jdk-25</id>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <configuration>
+              <rules>
+                <requireJavaVersion>
+                  <version>[25,)</version>
+                  <message>Build with JDK 25 or newer (paper-api 26.x is compiled for Java 25). The plugin itself still runs on Java 21 servers.</message>
+                </requireJavaVersion>
+              </rules>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
         <version>3.16.0</version>
         <configuration>
-          <release>${java.version}</release>
+          <release>${java.release}</release>
         </configuration>
       </plugin>
     </plugins>
@@ -41,17 +65,21 @@
 
   <repositories>
       <repository>
-          <id>spigotmc-repo</id>
-          <url>https://hub.spigotmc.org/nexus/content/repositories/snapshots/</url>
+          <id>papermc</id>
+          <url>https://repo.papermc.io/repository/maven-public/</url>
       </repository>
   </repositories>
 
   <dependencies>
-      <!-- Spigot API also provides Gson, BungeeCord chat, and the MySQL/SQLite JDBC drivers at runtime. -->
+      <!--
+        Paper API includes the full Bukkit/Spigot API, so the same jar runs on Spigot and Paper.
+        Paper-only classes are used only in PaperChatListener, which is loaded only on Paper.
+        Gson, BungeeCord chat and the MySQL/SQLite JDBC drivers are provided by the server.
+      -->
       <dependency>
-          <groupId>org.spigotmc</groupId>
-          <artifactId>spigot-api</artifactId>
-          <version>${spigot.version}</version>
+          <groupId>io.papermc.paper</groupId>
+          <artifactId>paper-api</artifactId>
+          <version>${paper.version}</version>
           <scope>provided</scope>
       </dependency>
   </dependencies>

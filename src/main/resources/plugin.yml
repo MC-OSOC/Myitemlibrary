@@ -21,7 +21,7 @@ permissions:
     description: Open your own item library
     default: true
   my_item_library.admin:
-    description: Access the settings menu (toggle API, generate API key, reload server)
+    description: Access the settings menu (toggle API, generate API key, reload the plugin)
     default: op
     children:
       my_item_library.admin.reload: true

@@ -29,7 +29,7 @@ settings:
   title: "settings"
   Apply_and_reload:
     name: "§eApply and reload"
-    description: "§a[Right click]§f Reload Server"
+    description: "§a[Right click]§f Reload MyItemLibrary"
   back:
     name: "&fBack"
     description: "&fReturn to main menu"
