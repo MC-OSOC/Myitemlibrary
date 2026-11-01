@@ -52,6 +52,11 @@
         <version>3.16.0</version>
         <configuration>
           <release>${java.release}</release>
+          <compilerArgs>
+            <!-- Show deprecated/for-removal API usage so future Paper/Spigot removals are visible early. -->
+            <arg>-Xlint:deprecation</arg>
+            <arg>-Xlint:removal</arg>
+          </compilerArgs>
         </configuration>
       </plugin>
     </plugins>
