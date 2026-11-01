@@ -25,12 +25,68 @@ jobs:
       - name: Build
         run: mvn -B -ntp package
 
-      - name: Show resolved paper-api version
-        run: ls ~/.m2/repository/io/papermc/paper/paper-api/
-
       - name: Upload plugin jar
         uses: actions/upload-artifact@v7
         with:
           name: MyItemLibrary
           path: target/my-item-library-*.jar
           if-no-files-found: error
+
+  # Start real servers with the plugin and test that it enables and the REST API works.
+  smoke-test:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: paper,  mc: '26.3',   java: '25' }
+          - { platform: paper,  mc: '1.21.11', java: '21' }
+          - { platform: paper,  mc: '1.20.6', java: '21' }
+          - { platform: spigot, mc: '26.3',   java: '25' }
+    name: smoke ${{ matrix.platform }} ${{ matrix.mc }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+
+      - uses: actions/download-artifact@v7
+        with:
+          name: MyItemLibrary
+          path: plugin
+
+      - name: Download Paper ${{ matrix.mc }}
+        if: matrix.platform == 'paper'
+        run: |
+          UA="MyItemLibrary-CI (https://github.com/${{ github.repository }})"
+          URL=$(curl -fsSL -A "$UA" "https://fill.papermc.io/v3/projects/paper/versions/${{ matrix.mc }}/builds/latest" \
+            | python3 -c "import sys,json; print(json.load(sys.stdin)['downloads']['server:default']['url'])")
+          echo "Downloading $URL"
+          curl -fsSL -A "$UA" -o server.jar "$URL"
+
+      - name: Cache Spigot ${{ matrix.mc }}
+        if: matrix.platform == 'spigot'
+        id: spigot-cache
+        uses: actions/cache@v6
+        with:
+          path: spigot-${{ matrix.mc }}.jar
+          key: spigot-${{ matrix.mc }}-${{ github.run_id }}
+          restore-keys: spigot-${{ matrix.mc }}-
+
+      - name: Build Spigot ${{ matrix.mc }} with BuildTools
+        if: matrix.platform == 'spigot' && steps.spigot-cache.outputs.cache-hit != 'true' && hashFiles(format('spigot-{0}.jar', matrix.mc)) == ''
+        run: |
+          mkdir -p buildtools && cd buildtools
+          curl -fsSL -o BuildTools.jar https://hub.spigotmc.org/jenkins/job/BuildTools/lastSuccessfulBuild/artifact/target/BuildTools.jar
+          java -jar BuildTools.jar --rev ${{ matrix.mc }} --compile SPIGOT --output-dir .. > buildtools.log 2>&1 || { tail -50 buildtools.log; exit 1; }
+
+      - name: Use Spigot jar
+        if: matrix.platform == 'spigot'
+        run: cp spigot-${{ matrix.mc }}.jar server.jar
+
+      - name: Smoke test
+        run: .github/scripts/smoke-test.sh server.jar plugin/my-item-library-*.jar

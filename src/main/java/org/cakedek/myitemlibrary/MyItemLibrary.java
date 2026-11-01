@@ -166,6 +166,7 @@ public final class MyItemLibrary extends JavaPlugin {
      * Looks up a translated message. If the last argument is a Player, that player's language is used.
      * Arguments are inserted as-is: color codes inside arguments (e.g. text typed by players) are not translated.
      */
+    @SuppressWarnings("deprecation") // ChatColor is deprecated on Paper but is the only color API that also exists on Spigot
     public String getTranslation(String key, Object... args) {
         Player player = null;
         if (args != null && args.length > 0 && args[args.length - 1] instanceof Player) {

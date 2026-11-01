@@ -18,8 +18,11 @@
       Building needs JDK 25 because paper-api 26.x is compiled for Java 25.
     -->
     <java.release>21</java.release>
-    <!-- Compile against the newest API so removed/changed methods show up as build errors. -->
-    <paper.version>[26.3.build,26.4)</paper.version>
+    <!--
+      Compile against the newest API so removed/changed methods show up as build errors.
+      Pinned to a stable build for reproducible builds; bump when a newer stable build is out.
+    -->
+    <paper.version>26.3.build.235-stable</paper.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
   </properties>
 
