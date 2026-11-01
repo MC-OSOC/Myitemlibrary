@@ -1,25 +1,20 @@
 package org.cakedek.myitemlibrary.api.handlers;
 
+import com.google.gson.JsonObject;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
-import com.google.gson.JsonObject;
-import org.cakedek.myitemlibrary.api.Api;
-import org.cakedek.myitemlibrary.database.CoDatabase;
 import org.cakedek.myitemlibrary.MyItemLibrary;
+import org.cakedek.myitemlibrary.api.Api;
 
 import java.io.IOException;
-
-import static org.cakedek.myitemlibrary.util.Input.sanitizeInput;
+import java.sql.SQLException;
 
 public class AddItemHandlers {
-
     private final MyItemLibrary plugin;
-    private final CoDatabase database;
     private final Api api;
 
-    public AddItemHandlers(MyItemLibrary plugin, CoDatabase database, Api api) {
+    public AddItemHandlers(MyItemLibrary plugin, Api api) {
         this.plugin = plugin;
-        this.database = database;
         this.api = api;
     }
 
@@ -31,34 +26,17 @@ public class AddItemHandlers {
                 return;
             }
 
-            if (api.validateApiKey(exchange)) {
-                api.sendResponse(exchange, 401, "Unauthorized");
-                return;
-            }
+            JsonObject json = api.parseRequestBody(exchange.getRequestBody());
+            ItemRequest item = ItemRequest.parse(json);
+            String player = ItemRequest.parsePlayer(json);
 
             try {
-                JsonObject jsonObject = api.parseRequestBody(exchange.getRequestBody());
-
-                String itemName = sanitizeInput(jsonObject.get("item_name").getAsString());
-                String itemDisplay = sanitizeInput(jsonObject.get("item_display").getAsString());
-                String description = sanitizeInput(jsonObject.get("description").getAsString());
-                String player = sanitizeInput(jsonObject.get("player").getAsString());
-                String command = sanitizeInput(jsonObject.get("command").getAsString());
-                int used = validateInteger(jsonObject.get("used").getAsInt(), 0, Integer.MAX_VALUE);
-
-                if (itemName.length() > 255 || itemDisplay.length() > 255 || player.length() > 255) {
-                    throw new IllegalArgumentException("Input string too long");
-                }
-
-                database.addItem(itemName, itemDisplay, description, player, true, command, used);
+                plugin.getDatabase().addItem(item.itemName(), item.itemDisplay(), item.description(), player, true, item.command(), item.used());
                 api.sendResponse(exchange, 200, "Item added successfully");
-            } catch (Exception e) {
-                plugin.getLogger().severe("Error processing API request: " + e.getMessage());
-                api.sendResponse(exchange, 400, "Bad Request: " + e.getMessage());
+            } catch (SQLException e) {
+                plugin.getLogger().severe("Error adding item via API: " + e.getMessage());
+                api.sendResponse(exchange, 500, "Internal Server Error");
             }
-        }
-        private int validateInteger(int value, int min, int max) {
-            return Math.max(min, Math.min(value, max));
         }
     }
 }

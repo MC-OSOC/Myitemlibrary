@@ -7,65 +7,89 @@ import org.bukkit.NamespacedKey;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
+import org.bukkit.entity.HumanEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
-import org.cakedek.myitemlibrary.database.CoDatabase;
-import org.cakedek.myitemlibrary.commands.CommandDetails;
 import org.cakedek.myitemlibrary.MyItemLibrary;
+import org.cakedek.myitemlibrary.database.CoDatabase;
+import org.cakedek.myitemlibrary.database.ItemData;
+import org.cakedek.myitemlibrary.util.Input;
 
-import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.logging.Level;
 
-@SuppressWarnings("ALL")
+@SuppressWarnings("deprecation") // legacy String/ChatColor API is kept for Spigot compatibility
 public class GUIOpen implements CommandExecutor, Listener {
-    private static final int ITEMS_PER_PAGE = 44;
+    private static final int ITEMS_PER_PAGE = 45;
     private static final int INVENTORY_SIZE = 54;
+    private static final int MAX_SEARCH_LENGTH = 64;
+
+    private static final String BTN_PREV = "prev_page";
+    private static final String BTN_NEXT = "next_page";
+    private static final String BTN_SEARCH = "search";
+    private static final String BTN_LANGUAGE = "language";
+    private static final String BTN_SETTINGS = "settings";
 
     private final MyItemLibrary plugin;
-    private final CoDatabase database;
-    private final Map<UUID, Integer> playerPageMap = new HashMap<>();
-    private final Map<UUID, String> playerSearchMap = new HashMap<>();
+    private final NamespacedKey buttonKey;
+    private final NamespacedKey itemIdKey;
+    // Read from the async chat thread, so it must be thread-safe.
+    private final Map<UUID, String> playerSearchMap = new ConcurrentHashMap<>();
 
     public GUIOpen(MyItemLibrary plugin) {
         this.plugin = plugin;
-        this.database = plugin.getDatabase();
+        this.buttonKey = new NamespacedKey(plugin, "navigation_button");
+        this.itemIdKey = new NamespacedKey(plugin, "item_id");
     }
 
-    @SuppressWarnings("NullableProblems")
-    private static class LibraryGUIHolder implements InventoryHolder {
+    /** Identifies our GUI and remembers who it was opened for and which page it shows. */
+    private static final class LibraryGUIHolder implements InventoryHolder {
+        private final UUID owner;
+        private final int page;
+        private Inventory inventory;
+
+        private LibraryGUIHolder(UUID owner, int page) {
+            this.owner = owner;
+            this.page = page;
+        }
+
         @Override
         public Inventory getInventory() {
-            return null;
+            return inventory;
         }
     }
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (!(sender instanceof Player)) {
-            sender.sendMessage(plugin.getTranslation("messages.players_only", sender));
+            sender.sendMessage(plugin.getTranslation("messages.players_only"));
             return true;
         }
-
-        Player player = (Player) sender;
-
-        // This will handle 'my-library', 'mylib', and 'ml'
-        openLibraryGui(player, 0);
+        openLibraryGui((Player) sender, 0);
         return true;
     }
 
-
     public void openLibraryGui(Player player, int page) {
+        CoDatabase database = plugin.getDatabase();
         if (database == null) {
             player.sendMessage(plugin.getTranslation("messages.db_not_connected", player));
             return;
@@ -73,120 +97,84 @@ public class GUIOpen implements CommandExecutor, Listener {
 
         try {
             String searchTerm = playerSearchMap.getOrDefault(player.getUniqueId(), "");
-            ResultSet rs = database.getListItemsByPlayerAndEnabledAndSearch(player.getName(), searchTerm);
-            List<ItemStack> items = loadItemsFromResultSet(rs);
+            List<ItemData> items = database.getEnabledItems(player.getName(), searchTerm);
 
-            int totalPages = (int) Math.ceil(items.size() / (double) ITEMS_PER_PAGE);
-            String guiTitle = plugin.getTranslation("gui.title", page + 1, player);
-            Inventory gui = Bukkit.createInventory(new LibraryGUIHolder(), INVENTORY_SIZE, guiTitle);
+            int totalPages = Math.max(1, (int) Math.ceil(items.size() / (double) ITEMS_PER_PAGE));
+            page = Math.max(0, Math.min(page, totalPages - 1));
 
-            populateInventoryWithItems(gui, items, page);
-            addNavigationButtons(gui, page, totalPages);
-            addUtilityButtons(gui, player);
+            LibraryGUIHolder holder = new LibraryGUIHolder(player.getUniqueId(), page);
+            Inventory gui = Bukkit.createInventory(holder, INVENTORY_SIZE, plugin.getTranslation("gui.title", page + 1, player));
+            holder.inventory = gui;
 
-            playerPageMap.put(player.getUniqueId(), page);
+            int start = page * ITEMS_PER_PAGE;
+            int end = Math.min(start + ITEMS_PER_PAGE, items.size());
+            for (int i = start; i < end; i++) {
+                gui.setItem(i - start, createItemStack(items.get(i)));
+            }
+
+            if (page > 0) {
+                gui.setItem(45, createButton(Material.ARROW, plugin.getTranslation("gui.prev_page", player), null, BTN_PREV));
+            }
+            if (page < totalPages - 1) {
+                gui.setItem(53, createButton(Material.ARROW, plugin.getTranslation("gui.next_page", player), null, BTN_NEXT));
+            }
+            gui.setItem(49, createButton(Material.COMPASS, plugin.getTranslation("gui.search", player), createSearchLore(player), BTN_SEARCH));
+            gui.setItem(50, createButton(Material.BOOK, plugin.getTranslation("gui.switch_language", player), createLanguageSwitchLore(player), BTN_LANGUAGE));
+            if (player.hasPermission(MyItemLibrary.PERMISSION_ADMIN)) {
+                gui.setItem(51, createButton(Material.REDSTONE, plugin.getTranslation("gui.settings.name", player),
+                        Collections.singletonList(plugin.getTranslation("gui.settings.description", player)), BTN_SETTINGS));
+            }
+
             player.openInventory(gui);
         } catch (SQLException e) {
             player.sendMessage(plugin.getTranslation("messages.db_error", player));
-            plugin.getLogger().log(java.util.logging.Level.SEVERE, "An error occurred while fetching the item list.", e);
+            plugin.getLogger().log(Level.SEVERE, "An error occurred while fetching the item list.", e);
         }
     }
 
-    private List<ItemStack> loadItemsFromResultSet(ResultSet rs) throws SQLException {
-        List<ItemStack> items = new ArrayList<>();
-        while (rs.next()) {
-            ItemStack item = createItemStackFromResultSet(rs);
-            items.add(item);
-            plugin.getCommandMap().put(item, new CommandDetails(rs.getInt("id"), rs.getString("command")));
-        }
-        return items;
-    }
-
-    private ItemStack createItemStackFromResultSet(ResultSet rs) throws SQLException {
-        String itemName = rs.getString("item_name");
-        String itemDisplay = rs.getString("item_display");
-        String description = rs.getString("description");
-        int id = rs.getInt("id");
-
-        Material material = Material.BARRIER;
-        try {
-            material = Material.valueOf(itemDisplay.toUpperCase());
-        } catch (IllegalArgumentException ignored) {
+    private ItemStack createItemStack(ItemData data) {
+        Material material = data.getItemDisplay() == null ? null : Material.matchMaterial(data.getItemDisplay());
+        if (material == null || !material.isItem() || material.isAir()) {
+            material = Material.BARRIER;
         }
 
         ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
-            meta.setDisplayName(applyColorCodes(itemName));
-            meta.setLore(splitAndApplyColorCodes(description));
-            meta.setCustomModelData(id);
+            meta.setDisplayName(colorize(data.getItemName()));
+            meta.setLore(splitAndColorize(data.getDescription()));
+            // The database id is stored on the item. The command is looked up again (and ownership checked)
+            // when the item is clicked, so a copied/forged item cannot run anything.
+            meta.getPersistentDataContainer().set(itemIdKey, PersistentDataType.INTEGER, data.getId());
             item.setItemMeta(meta);
         }
-
         return item;
     }
 
-    private String applyColorCodes(String text) {
-        return ChatColor.translateAlternateColorCodes('&', text);
+    private static String colorize(String text) {
+        return ChatColor.translateAlternateColorCodes('&', text == null ? "" : text);
     }
 
-    private List<String> splitAndApplyColorCodes(String text) {
+    private static List<String> splitAndColorize(String text) {
         List<String> lines = new ArrayList<>();
+        if (text == null) {
+            return lines;
+        }
         for (String line : text.split("\n")) {
-            lines.add(applyColorCodes(line));
+            lines.add(colorize(line));
         }
         return lines;
     }
 
-    private void populateInventoryWithItems(Inventory gui, List<ItemStack> items, int page) {
-        int start = page * ITEMS_PER_PAGE;
-        int end = Math.min(start + ITEMS_PER_PAGE, items.size());
-
-        for (int i = start; i < end; i++) {
-            gui.setItem(i - start, items.get(i));
-        }
-    }
-
-    private void addNavigationButtons(Inventory gui, int currentPage, int totalPages) {
-        if (currentPage > 0) {
-            gui.setItem(45, createNavigationItem(Material.ARROW, plugin.getTranslation("gui.prev_page", null), "prev_page"));
-        }
-
-        if (currentPage < totalPages - 1) {
-            gui.setItem(53, createNavigationItem(Material.ARROW, plugin.getTranslation("gui.next_page", null), "next_page"));
-        }
-    }
-
-    private void addUtilityButtons(Inventory gui, Player player) {
-        gui.setItem(49, createSearchButton(player));
-        gui.setItem(50, createLanguageSwitchButton(player));
-
-        if (player.isOp()) {
-            gui.setItem(51, createSettingsButton(player));
-        }
-    }
-
-    private ItemStack createNavigationItem(Material material, String displayName, String type) {
+    private ItemStack createButton(Material material, String displayName, List<String> lore, String type) {
         ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
             meta.setDisplayName(displayName);
-            meta.getPersistentDataContainer().set(
-                    new NamespacedKey(plugin, "navigation_button"),
-                    PersistentDataType.STRING,
-                    type
-            );
-            item.setItemMeta(meta);
-        }
-        return item;
-    }
-
-    private ItemStack createSearchButton(Player player) {
-        ItemStack item = new ItemStack(Material.COMPASS);
-        ItemMeta meta = item.getItemMeta();
-        if (meta != null) {
-            meta.setDisplayName(plugin.getTranslation("gui.search", player));
-            meta.setLore(createSearchLore(player));
+            if (lore != null) {
+                meta.setLore(lore);
+            }
+            meta.getPersistentDataContainer().set(buttonKey, PersistentDataType.STRING, type);
             item.setItemMeta(meta);
         }
         return item;
@@ -195,179 +183,186 @@ public class GUIOpen implements CommandExecutor, Listener {
     private List<String> createSearchLore(Player player) {
         List<String> lore = new ArrayList<>();
         String currentSearch = playerSearchMap.getOrDefault(player.getUniqueId(), "");
-
         lore.add(plugin.getTranslation("gui.current_search", currentSearch, player));
         lore.add(plugin.getTranslation("gui.left_click_to_search", player));
         lore.add(plugin.getTranslation("gui.right_click_to_clear", player));
-
         return lore;
-    }
-
-    private ItemStack createLanguageSwitchButton(Player player) {
-        ItemStack item = new ItemStack(Material.BOOK);
-        ItemMeta meta = item.getItemMeta();
-        if (meta != null) {
-            meta.setDisplayName(plugin.getTranslation("gui.switch_language", player));
-            meta.setLore(createLanguageSwitchLore(player));
-            item.setItemMeta(meta);
-        }
-        return item;
     }
 
     private List<String> createLanguageSwitchLore(Player player) {
         List<String> lore = new ArrayList<>();
         String currentLang = plugin.getPlayerLanguage(player);
-        Map<String, String> availableLanguages = plugin.getAvailableLanguages();
-
-        for (Map.Entry<String, String> entry : availableLanguages.entrySet()) {
-            String langCode = entry.getKey();
-            String langName = entry.getValue();
-            String prefix = langCode.equals(currentLang) ? ChatColor.GREEN + "-> " + ChatColor.RESET : ChatColor.WHITE + "-  ";
-            lore.add(prefix + langName);
+        for (Map.Entry<String, String> entry : plugin.getAvailableLanguages().entrySet()) {
+            String prefix = entry.getKey().equals(currentLang) ? ChatColor.GREEN + "-> " + ChatColor.RESET : ChatColor.WHITE + "-  ";
+            lore.add(prefix + entry.getValue());
         }
-
         return lore;
     }
 
-    private ItemStack createSettingsButton(Player player) {
-        ItemStack item = new ItemStack(Material.REDSTONE);
-        ItemMeta meta = item.getItemMeta();
-        if (meta != null) {
-            meta.setDisplayName(plugin.getTranslation("gui.settings.name", player));
-            meta.setLore(Collections.singletonList(plugin.getTranslation("gui.settings.description", player)));
-            item.setItemMeta(meta);
-        }
-        return item;
-    }
+    // ------------------------------------------------------------------ events
 
-    private void handleItemClick(InventoryClickEvent event, Player player, ItemStack clickedItem) {
-        CommandDetails commandDetails = plugin.getCommandMap().get(clickedItem);
-
-        if (commandDetails == null) {
-            return;
-        }
-
-        player.closeInventory();
-        String commandToRun = commandDetails.getCommand().replace("<player>", player.getName());
-        Bukkit.dispatchCommand(Bukkit.getConsoleSender(), commandToRun);
-        player.sendMessage(plugin.getTranslation("gui.item_received", Objects.requireNonNull(clickedItem.getItemMeta()).getDisplayName(), player));
-
-        updateItemInDatabase(commandDetails.getId());
-    }
-
-    private void updateItemInDatabase(int itemId) {
-        try {
-            database.updateItemEnabled(itemId, false);
-            database.updateItemused(itemId);
-        } catch (SQLException e) {
-            plugin.getLogger().log(java.util.logging.Level.SEVERE, "An error occurred while updating the item.", e);
-        }
-    }
-
-    private void handleNavigationClick(InventoryClickEvent event, Player player) {
-        int currentPage = playerPageMap.get(player.getUniqueId());
-        ItemStack clickedItem = event.getCurrentItem();
-        ItemMeta meta = clickedItem.getItemMeta();
-
-        if (meta == null) {
-            return;
-        }
-
-        NamespacedKey key = new NamespacedKey(plugin, "navigation_button");
-        PersistentDataContainer container = meta.getPersistentDataContainer();
-
-        if (container.has(key, PersistentDataType.STRING)) {
-            String buttonType = container.get(key, PersistentDataType.STRING);
-            if ("next_page".equals(buttonType)) {
-                openLibraryGui(player, currentPage + 1);
-            } else if ("prev_page".equals(buttonType)) {
-                openLibraryGui(player, currentPage - 1);
-            }
-        }
-    }
-    private void handleSearchClick(Player player, InventoryClickEvent event) {
-        if (event.isLeftClick()) {
-            player.closeInventory();
-            player.sendMessage(plugin.getTranslation("messages.enter_search_term", player));
-            plugin.setPlayerInSearchMode(player.getUniqueId(), true);
-        } else if (event.isRightClick()) {
-            clearSearch(player);
-            openLibraryGui(player, 0);
-        }
-    }
-
-    private void clearSearch(Player player) {
-        playerSearchMap.remove(player.getUniqueId());
-    }
-
-    @EventHandler
+    @EventHandler(priority = EventPriority.HIGH)
     public void onInventoryClick(InventoryClickEvent event) {
         if (!(event.getInventory().getHolder() instanceof LibraryGUIHolder)) {
             return;
         }
-
+        // Block every interaction (shift-click, number keys, drops...) with our GUI.
         event.setCancelled(true);
-        Player player = (Player) event.getWhoClicked();
-        ItemStack clickedItem = event.getCurrentItem();
 
-        if (clickedItem == null) {
+        if (!(event.getWhoClicked() instanceof Player)) {
+            return;
+        }
+        Player player = (Player) event.getWhoClicked();
+        LibraryGUIHolder holder = (LibraryGUIHolder) event.getInventory().getHolder();
+
+        // Only react to clicks in the top (GUI) inventory, not the player's own inventory,
+        // and only for the player the GUI was opened for.
+        if (event.getRawSlot() < 0 || event.getRawSlot() >= event.getInventory().getSize()
+                || !holder.owner.equals(player.getUniqueId())) {
             return;
         }
 
+        ItemStack clickedItem = event.getCurrentItem();
+        if (clickedItem == null) {
+            return;
+        }
         ItemMeta meta = clickedItem.getItemMeta();
-        if (meta != null) {
-            NamespacedKey key = new NamespacedKey(plugin, "navigation_button");
-            if (meta.getPersistentDataContainer().has(key, PersistentDataType.STRING)) {
-                handleNavigationClick(event, player);
-                return;
-            }
+        if (meta == null) {
+            return;
+        }
+        PersistentDataContainer pdc = meta.getPersistentDataContainer();
+
+        String button = pdc.get(buttonKey, PersistentDataType.STRING);
+        if (button != null) {
+            handleButton(event, player, holder, button);
+            return;
         }
 
-        switch (clickedItem.getType()) {
-            case BOOK:
+        Integer itemId = pdc.get(itemIdKey, PersistentDataType.INTEGER);
+        if (itemId != null) {
+            handleItemClick(player, itemId, meta.getDisplayName());
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onInventoryDrag(InventoryDragEvent event) {
+        if (event.getInventory().getHolder() instanceof LibraryGUIHolder) {
+            event.setCancelled(true);
+        }
+    }
+
+    private void handleButton(InventoryClickEvent event, Player player, LibraryGUIHolder holder, String button) {
+        switch (button) {
+            case BTN_NEXT:
+                openLibraryGui(player, holder.page + 1);
+                break;
+            case BTN_PREV:
+                openLibraryGui(player, holder.page - 1);
+                break;
+            case BTN_LANGUAGE:
                 plugin.switchLanguage(player);
-                openLibraryGui(player, playerPageMap.get(player.getUniqueId()));
+                openLibraryGui(player, holder.page);
                 break;
-            case COMPASS:
-                handleSearchClick(player, event);
-                break;
-            case REDSTONE:
-                if (player.isOp()) {
+            case BTN_SEARCH:
+                if (event.isLeftClick()) {
                     player.closeInventory();
-                    GUISettings guiSettings = plugin.getGuiSettings();
-                    guiSettings.openSettingsGUI(player);
+                    player.sendMessage(plugin.getTranslation("messages.enter_search_term", player));
+                    plugin.setPlayerInSearchMode(player.getUniqueId(), true);
+                } else if (event.isRightClick()) {
+                    playerSearchMap.remove(player.getUniqueId());
+                    openLibraryGui(player, 0);
+                }
+                break;
+            case BTN_SETTINGS:
+                if (player.hasPermission(MyItemLibrary.PERMISSION_ADMIN)) {
+                    player.closeInventory();
+                    plugin.getGuiSettings().openSettingsGUI(player);
                 }
                 break;
             default:
-                handleItemClick(event, player, clickedItem);
                 break;
         }
     }
 
+    private void handleItemClick(Player player, int itemId, String displayName) {
+        CoDatabase database = plugin.getDatabase();
+        if (database == null) {
+            player.sendMessage(plugin.getTranslation("messages.db_not_connected", player));
+            return;
+        }
+
+        // The player name is inserted into a console command. Refuse names that could act as
+        // selectors or extra arguments (possible on offline-mode servers), e.g. "@a".
+        if (!Input.isValidPlayerName(player.getName())) {
+            plugin.getLogger().warning("Refusing to run reward command for unsafe player name: " + player.getName());
+            player.closeInventory();
+            return;
+        }
+
+        String command;
+        try {
+            command = database.claimItem(itemId, player.getName());
+        } catch (SQLException e) {
+            player.sendMessage(plugin.getTranslation("messages.db_error", player));
+            plugin.getLogger().log(Level.SEVERE, "An error occurred while claiming item " + itemId, e);
+            return;
+        }
+
+        player.closeInventory();
+        if (command == null) {
+            // Already claimed, or not this player's item.
+            return;
+        }
+
+        String commandToRun = command.replace("<player>", player.getName());
+        if (commandToRun.startsWith("/")) {
+            commandToRun = commandToRun.substring(1);
+        }
+        Bukkit.dispatchCommand(Bukkit.getConsoleSender(), commandToRun);
+        player.sendMessage(plugin.getTranslation("gui.item_received", displayName, player));
+    }
 
     @EventHandler
     public void onInventoryClose(InventoryCloseEvent event) {
         if (event.getInventory().getHolder() instanceof LibraryGUIHolder) {
-            Player player = (Player) event.getPlayer();
-            if (plugin.isPlayerInSearchMode(player.getUniqueId())) {
-                plugin.setPlayerInSearchMode(player.getUniqueId(), false);
-                player.sendMessage(plugin.getTranslation("messages.search_cancelled", player));
+            HumanEntity human = event.getPlayer();
+            if (plugin.isPlayerInSearchMode(human.getUniqueId())) {
+                plugin.setPlayerInSearchMode(human.getUniqueId(), false);
+                human.sendMessage(plugin.getTranslation("messages.search_cancelled", human));
             }
         }
     }
 
-    @EventHandler
+    @EventHandler(priority = EventPriority.LOWEST)
     public void onPlayerChat(AsyncPlayerChatEvent event) {
         Player player = event.getPlayer();
-        if (plugin.isPlayerInSearchMode(player.getUniqueId())) {
-            event.setCancelled(true);
-            String searchTerm = event.getMessage();
-            playerSearchMap.put(player.getUniqueId(), searchTerm);
-            plugin.setPlayerInSearchMode(player.getUniqueId(), false);
-            Bukkit.getScheduler().runTask(plugin, () -> {
-                player.sendMessage(plugin.getTranslation("messages.search_applied", searchTerm, player));
-                openLibraryGui(player, 0);
-            });
+        if (!plugin.isPlayerInSearchMode(player.getUniqueId())) {
+            return;
         }
+        event.setCancelled(true);
+        plugin.setPlayerInSearchMode(player.getUniqueId(), false);
+
+        String raw = ChatColor.stripColor(ChatColor.translateAlternateColorCodes('&', event.getMessage()));
+        String searchTerm = raw == null ? "" : raw.trim();
+        if (searchTerm.length() > MAX_SEARCH_LENGTH) {
+            searchTerm = searchTerm.substring(0, MAX_SEARCH_LENGTH);
+        }
+        playerSearchMap.put(player.getUniqueId(), searchTerm);
+
+        final String applied = searchTerm;
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            if (!player.isOnline()) {
+                return;
+            }
+            player.sendMessage(plugin.getTranslation("messages.search_applied", applied, player));
+            openLibraryGui(player, 0);
+        });
+    }
+
+    @EventHandler
+    public void onQuit(PlayerQuitEvent event) {
+        UUID id = event.getPlayer().getUniqueId();
+        playerSearchMap.remove(id);
+        plugin.setPlayerInSearchMode(id, false);
     }
 }

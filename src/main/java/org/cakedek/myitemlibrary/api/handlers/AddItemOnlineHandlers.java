@@ -1,26 +1,27 @@
 package org.cakedek.myitemlibrary.api.handlers;
 
-import com.google.gson.JsonObject;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
+import org.cakedek.myitemlibrary.MyItemLibrary;
 import org.cakedek.myitemlibrary.api.Api;
 import org.cakedek.myitemlibrary.database.CoDatabase;
-import org.cakedek.myitemlibrary.MyItemLibrary;
 
 import java.io.IOException;
-
-import static org.cakedek.myitemlibrary.util.Input.sanitizeInput;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 public class AddItemOnlineHandlers {
     private final MyItemLibrary plugin;
-    private final CoDatabase database;
     private final Api api;
 
-    public AddItemOnlineHandlers(MyItemLibrary plugin, CoDatabase database, Api api) {
+    public AddItemOnlineHandlers(MyItemLibrary plugin, Api api) {
         this.plugin = plugin;
-        this.database = database;
         this.api = api;
     }
 
@@ -32,44 +33,40 @@ public class AddItemOnlineHandlers {
                 return;
             }
 
-            if (api.validateApiKey(exchange)) {
-                api.sendResponse(exchange, 401, "Unauthorized");
+            ItemRequest item = ItemRequest.parse(api.parseRequestBody(exchange.getRequestBody()));
+
+            List<String> onlinePlayers;
+            try {
+                // The online player list must be read on the main server thread.
+                onlinePlayers = Bukkit.getScheduler().callSyncMethod(plugin, () -> {
+                    List<String> names = new ArrayList<>();
+                    for (Player p : Bukkit.getOnlinePlayers()) {
+                        names.add(p.getName());
+                    }
+                    return names;
+                }).get(10, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                api.sendResponse(exchange, 503, "Service Unavailable");
+                return;
+            } catch (ExecutionException | TimeoutException e) {
+                plugin.getLogger().warning("Could not read online players for API request: " + e);
+                api.sendResponse(exchange, 503, "Service Unavailable");
                 return;
             }
 
             try {
-                JsonObject jsonObject = api.parseRequestBody(exchange.getRequestBody());
-                String itemName = sanitizeInput(jsonObject.get("item_name").getAsString());
-                String itemDisplay = sanitizeInput(jsonObject.get("item_display").getAsString());
-                String description = sanitizeInput(jsonObject.get("description").getAsString());
-                String command = sanitizeInput(jsonObject.get("command").getAsString());
-                int used = validateInteger(jsonObject.get("used").getAsInt(), 0, Integer.MAX_VALUE);
-
-                if (itemName.isEmpty() || itemDisplay.isEmpty() || description.isEmpty() || command.isEmpty()) {
-                    throw new IllegalArgumentException("All fields must be non-empty");
-                }
-
-                if (itemName.length() > 255 || itemDisplay.length() > 255) {
-                    throw new IllegalArgumentException("Item name or display name is too long (max 255 characters)");
-                }
-
+                CoDatabase database = plugin.getDatabase();
                 int addedCount = 0;
-                for (Player player : Bukkit.getOnlinePlayers()) {
-                    database.addItem(itemName, itemDisplay, description, player.getName(), true, command, used);
+                for (String playerName : onlinePlayers) {
+                    database.addItem(item.itemName(), item.itemDisplay(), item.description(), playerName, true, item.command(), item.used());
                     addedCount++;
                 }
-
                 api.sendResponse(exchange, 200, "Item added for " + addedCount + " online players");
-            } catch (IllegalArgumentException e) {
-                plugin.getLogger().warning("Invalid input in API request: " + e.getMessage());
-                api.sendResponse(exchange, 400, "Bad Request: " + e.getMessage());
-            } catch (Exception e) {
-                plugin.getLogger().severe("Error processing API request: " + e.getMessage());
+            } catch (SQLException e) {
+                plugin.getLogger().severe("Error adding item for online players via API: " + e.getMessage());
                 api.sendResponse(exchange, 500, "Internal Server Error");
             }
-        }
-        private int validateInteger(int value, int min, int max) {
-            return Math.max(min, Math.min(value, max));
         }
     }
 }

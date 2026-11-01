@@ -12,6 +12,11 @@ My library ready-to-use commands in a MySQL repository for Minecraft Server
 - RESTful API for external integrations
 - DoS protection for API endpoints
 
+## Requirements
+
+- Spigot or Paper **1.20.5 or newer** (tested API: 1.21.x; newer releases are supported as long as the Bukkit API stays compatible)
+- **Java 21** or newer
+
 ## Installation
 
 1. Download the latest release of MyItemLibrary from the releases page.
@@ -44,13 +49,20 @@ MyItemLibrary provides a RESTful API for external integrations. The API endpoint
 - GET `/item/{itemId}` - Retrieve a specific item by ID
 - DELETE `/item/{itemId}` - Delete a specific item by ID
 
-API requests require an API key for authentication.
+API requests require an API key in the `X-API-Key` header.
+
+Security notes:
+- If `c-api-key` is empty or shorter than 16 characters, a random key is generated and saved to `config.yml` when the API starts.
+- The API listens on `127.0.0.1` by default. Only use `0.0.0.0` behind a firewall.
+- Request bodies are limited to `max-request-size-bytes`, and player names must be valid Minecraft names.
 
 For detailed information on request parameters, response formats, and examples, please refer to our [API documentation](https://github.com/MC-OSOC/Myitemlibrary/wiki/API-documentation).
 
 ## Permissions
 
-- `my_item_library.admin.reload` - Allows use of the `/my-library-reload` command
+- `my_item_library.use` - Open your own library (default: everyone)
+- `my_item_library.admin` - Settings menu: toggle API, generate API key, reload server (default: op)
+- `my_item_library.admin.reload` - Allows use of the `/my-library-reload` command (default: op)
 
 ## Support
 For support, feature requests, or bug reports, please open an issue on the GitHub repository.

@@ -6,13 +6,17 @@
 
   <groupId>org.cakedek</groupId>
   <artifactId>my-item-library</artifactId>
-  <version>1.1-preview</version>
+  <version>1.2</version>
   <packaging>jar</packaging>
 
   <name>my-item-library</name>
 
   <properties>
-    <java.version>1.8</java.version>
+    <!-- Minecraft 1.20.5+ requires Java 21, newer releases run Java 21 bytecode as well. -->
+    <java.version>21</java.version>
+    <maven.compiler.release>${java.version}</maven.compiler.release>
+    <!-- API used at compile time only. The plugin also runs on newer servers. -->
+    <spigot.version>1.21.11-R0.1-SNAPSHOT</spigot.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
   </properties>
 
@@ -21,24 +25,10 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
-        <version>3.8.1</version>
+        <version>3.16.0</version>
         <configuration>
-          <source>16</source>
-          <target>16</target>
+          <release>${java.version}</release>
         </configuration>
-      </plugin>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-shade-plugin</artifactId>
-        <version>3.2.4</version>
-        <executions>
-          <execution>
-            <phase>package</phase>
-            <goals>
-              <goal>shade</goal>
-            </goals>
-          </execution>
-        </executions>
       </plugin>
     </plugins>
     <resources>
@@ -54,23 +44,15 @@
           <id>spigotmc-repo</id>
           <url>https://hub.spigotmc.org/nexus/content/repositories/snapshots/</url>
       </repository>
-      <repository>
-          <id>sonatype</id>
-          <url>https://oss.sonatype.org/content/groups/public/</url>
-      </repository>
   </repositories>
 
   <dependencies>
+      <!-- Spigot API also provides Gson, BungeeCord chat, and the MySQL/SQLite JDBC drivers at runtime. -->
       <dependency>
           <groupId>org.spigotmc</groupId>
           <artifactId>spigot-api</artifactId>
-          <version>1.20.6-R0.1-SNAPSHOT</version>
+          <version>${spigot.version}</version>
           <scope>provided</scope>
-      </dependency>
-      <dependency>
-          <groupId>com.googlecode.json-simple</groupId>
-          <artifactId>json-simple</artifactId>
-          <version>1.1.1</version>
       </dependency>
   </dependencies>
 </project>

@@ -1,144 +1,136 @@
 package org.cakedek.myitemlibrary;
 
 import org.bukkit.ChatColor;
-import org.bukkit.command.Command;
-import org.bukkit.command.CommandSender;
-import org.bukkit.command.PluginCommand;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
-import org.bukkit.event.Listener;
-import org.bukkit.inventory.ItemStack;
-import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.plugin.PluginManager;
+import org.bukkit.plugin.java.JavaPlugin;
 import org.cakedek.myitemlibrary.api.Api;
-import org.cakedek.myitemlibrary.commands.CommandDetails;
 import org.cakedek.myitemlibrary.commands.CommandHandler;
+import org.cakedek.myitemlibrary.config.PlayerConfig;
 import org.cakedek.myitemlibrary.database.CoDatabase;
 import org.cakedek.myitemlibrary.gui.GUIOpen;
 import org.cakedek.myitemlibrary.gui.GUISettings;
-import org.cakedek.myitemlibrary.config.PlayerConfig;
 
 import java.io.File;
-import java.io.IOException;
-import java.util.*;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
-@SuppressWarnings("ALL")
-public final class MyItemLibrary extends JavaPlugin implements Listener {
-    // Fields
+public final class MyItemLibrary extends JavaPlugin {
+    public static final String PERMISSION_ADMIN = "my_item_library.admin";
+    public static final String PERMISSION_RELOAD = "my_item_library.admin.reload";
+
     private PlayerConfig playerConfigHandler;
-    private CoDatabase database;
-    private CommandHandler commandHandler;
+    private volatile CoDatabase database;
     private GUIOpen guiOpen;
     private GUISettings guiSettings;
     private Api api;
-    private Map<ItemStack, CommandDetails> commandMap;
-    private Map<String, YamlConfiguration> languageFiles;
-    private Map<UUID, Boolean> playerSearchMode;
-
-    private String pluginVersion;
+    private final Map<String, YamlConfiguration> languageFiles = new LinkedHashMap<>();
+    // Written from the async chat thread, so it must be thread-safe.
+    private final Map<UUID, Boolean> playerSearchMode = new ConcurrentHashMap<>();
 
     private boolean dosProtectionEnabled;
     private int maxRequestsPerMinute;
     private long requestTimeWindowMs;
     private int maxRequestSizeBytes;
 
-    private boolean disablePluginPrefixCommands;
-
-
     // Plugin lifecycle methods
     @Override
     public void onEnable() {
-        loadDosProtectionConfig();
-        initializePlugin();
-        setupCommands();
-        registerEventListeners();
-
-
         saveDefaultConfig();
-        disablePluginPrefixCommands = getConfig().getBoolean("disable-plugin-prefix-commands", false);
+        loadDosProtectionConfig();
 
-        this.pluginVersion = getDescription().getVersion();
-        this.api = new Api(this);
-
-
-        if (getConfig().getBoolean("c-api.c-api-enable", false)) {
-            api.startServer();
-        }
+        playerConfigHandler = new PlayerConfig(this);
+        loadLanguageFiles();
 
         if (!setupDatabase()) {
             getLogger().severe("Failed to setup database. Disabling plugin.");
             getServer().getPluginManager().disablePlugin(this);
+            return;
         }
+
+        guiOpen = new GUIOpen(this);
+        guiSettings = new GUISettings(this);
+        api = new Api(this);
+
+        CommandHandler commandHandler = new CommandHandler(this);
+        getCommand("my-library-reload").setExecutor(commandHandler);
+        getCommand("my-library").setExecutor(guiOpen);
+
+        PluginManager pm = getServer().getPluginManager();
+        pm.registerEvents(guiOpen, this);
+        pm.registerEvents(guiSettings, this);
+
+        api.startServer();
     }
 
     @Override
     public void onDisable() {
+        if (api != null) {
+            api.stopServer();
+        }
         if (database != null) {
             database.close();
+            database = null;
         }
-        api.stopServer();
     }
 
-    // Initialization methods
-    private void initializePlugin() {
-        saveDefaultConfig();
-        commandMap = new HashMap<>();
-        languageFiles = new HashMap<>();
-        playerSearchMode = new HashMap<>();
-        playerConfigHandler = new PlayerConfig(this);
-
+    /**
+     * Reloads config, languages, database and API. Returns false if the database could not be connected.
+     */
+    public boolean reloadPlugin() {
+        reloadConfig();
+        loadDosProtectionConfig();
         loadLanguageFiles();
-
-        if (!setupDatabase()) {
-            getLogger().severe(getTranslation("messages.reload_fail"));
-        } else {
-            database.createTableIfNotExists();
+        boolean ok = setupDatabase();
+        if (api != null) {
+            api.stopServer();
         }
-
-        commandHandler = new CommandHandler(this);
-        guiOpen = new GUIOpen(this);
-        guiSettings = new GUISettings(this);
         api = new Api(this);
-    }
-
-    private void setupCommands() {
-        getCommand("my-library-reload").setExecutor(commandHandler);
-        getCommand("my-library").setExecutor(guiOpen);
-    }
-
-    private void registerEventListeners() {
-        PluginManager pm = getServer().getPluginManager();
-        pm.registerEvents(this, this);
-        pm.registerEvents(guiOpen, this);
-        guiSettings.registerEvents();
+        api.startServer();
+        return ok;
     }
 
     // Database methods
-    public boolean setupDatabase() {
+    public synchronized boolean setupDatabase() {
         String databaseMode = getConfig().getString("c-database-mode", "MySQL");
 
         if ("MySQL".equalsIgnoreCase(databaseMode)) {
             String host = getConfig().getString("c-database.host");
-            int port = getConfig().getInt("c-database.port");
             String username = getConfig().getString("c-database.username");
             String password = getConfig().getString("c-database.password");
             String databaseName = getConfig().getString("c-database.database");
 
-            if (host == null || username == null || password == null || databaseName == null) {
+            if (isBlank(host) || isBlank(username) || password == null || isBlank(databaseName)) {
                 getLogger().severe("MySQL database configuration is missing.");
                 return false;
             }
-
-            database = new CoDatabase(host, port, username, password, databaseName);
-        } else if ("Local".equalsIgnoreCase(databaseMode)) {
-            database = new CoDatabase(this);
-        } else {
+        } else if (!"Local".equalsIgnoreCase(databaseMode)) {
             getLogger().severe("Invalid database mode specified in config: " + databaseMode);
             return false;
         }
 
-        return database.connect();
+        CoDatabase newDatabase = new CoDatabase(this);
+        if (!newDatabase.connect() || !newDatabase.createTableIfNotExists()) {
+            newDatabase.close();
+            return false;
+        }
+
+        // Close the previous connection so reloads do not leak connections.
+        CoDatabase old = database;
+        database = newDatabase;
+        if (old != null) {
+            old.close();
+        }
+        return true;
+    }
+
+    private static boolean isBlank(String s) {
+        return s == null || s.trim().isEmpty();
     }
 
     // Language methods
@@ -150,47 +142,27 @@ public final class MyItemLibrary extends JavaPlugin implements Listener {
             saveResource("lang/th_TH.yml", false);
         }
 
-        for (File file : Objects.requireNonNull(langFolder.listFiles())) {
+        languageFiles.clear();
+        File[] files = langFolder.listFiles();
+        if (files == null) {
+            return;
+        }
+        for (File file : files) {
             if (file.isFile() && file.getName().endsWith(".yml")) {
-                String langCode = file.getName().replace(".yml", "");
-                YamlConfiguration config = YamlConfiguration.loadConfiguration(file);
-                languageFiles.put(langCode, config);
+                String langCode = file.getName().substring(0, file.getName().length() - ".yml".length());
+                languageFiles.put(langCode, YamlConfiguration.loadConfiguration(file));
                 getLogger().info("Loaded language file: " + langCode);
             }
         }
     }
 
-    public void createCustomLanguageFile(String langCode) {
-        File langFolder = new File(getDataFolder(), "lang");
-        File customLangFile = new File(langFolder, langCode + ".yml");
-
-        if (!customLangFile.exists()) {
-            try {
-                customLangFile.createNewFile();
-                YamlConfiguration config = YamlConfiguration.loadConfiguration(customLangFile);
-
-                YamlConfiguration defaultConfig = languageFiles.get("en_US");
-                for (String key : defaultConfig.getKeys(true)) {
-                    config.set(key, defaultConfig.get(key));
-                }
-
-                config.set("language.lang", langCode);
-                config.save(customLangFile);
-
-                languageFiles.put(langCode, config);
-                getLogger().info("Created custom language file: " + langCode);
-            } catch (IOException e) {
-                getLogger().severe("Failed to create custom language file: " + langCode);
-                e.printStackTrace();
-            }
-        } else {
-            getLogger().warning("Custom language file already exists: " + langCode);
-        }
-    }
-
+    /**
+     * Looks up a translated message. If the last argument is a Player, that player's language is used.
+     * Arguments are inserted as-is: color codes inside arguments (e.g. text typed by players) are not translated.
+     */
     public String getTranslation(String key, Object... args) {
         Player player = null;
-        if (args.length > 0 && args[args.length - 1] instanceof Player) {
+        if (args != null && args.length > 0 && args[args.length - 1] instanceof Player) {
             player = (Player) args[args.length - 1];
         }
 
@@ -204,34 +176,25 @@ public final class MyItemLibrary extends JavaPlugin implements Listener {
 
         if (langConfig == null) {
             getLogger().warning("Language file not found for " + langCode + ". Using hardcoded fallback.");
-            return ChatColor.translateAlternateColorCodes('&', key);
+            return key;
         }
 
-        String message = langConfig.getString(key, key);
-        message = ChatColor.translateAlternateColorCodes('&', message);
+        String message = ChatColor.translateAlternateColorCodes('&', langConfig.getString(key, key));
 
-        if (args.length > 0) {
-            Object[] coloredArgs = new Object[args.length];
-            for (int i = 0; i < args.length; i++) {
-                if (args[i] instanceof String) {
-                    coloredArgs[i] = ChatColor.translateAlternateColorCodes('&', (String) args[i]);
-                } else {
-                    coloredArgs[i] = args[i];
-                }
+        if (args != null && args.length > 0) {
+            try {
+                message = String.format(message, args);
+            } catch (java.util.IllegalFormatException e) {
+                getLogger().warning("Bad format string in language key " + key + ": " + e.getMessage());
             }
-            message = String.format(message, coloredArgs);
         }
-
         return message;
     }
 
     public Map<String, String> getAvailableLanguages() {
         Map<String, String> availableLanguages = new HashMap<>();
         for (Map.Entry<String, YamlConfiguration> entry : languageFiles.entrySet()) {
-            String langCode = entry.getKey();
-            YamlConfiguration langConfig = entry.getValue();
-            String langName = langConfig.getString("language.lang", langCode);
-            availableLanguages.put(langCode, langName);
+            availableLanguages.put(entry.getKey(), entry.getValue().getString("language.lang", entry.getKey()));
         }
         return availableLanguages;
     }
@@ -245,8 +208,11 @@ public final class MyItemLibrary extends JavaPlugin implements Listener {
     }
 
     public void switchLanguage(Player player) {
-        String currentLangCode = getPlayerLanguage(player);
         String[] availableLangCodes = languageFiles.keySet().toArray(new String[0]);
+        if (availableLangCodes.length == 0) {
+            return;
+        }
+        String currentLangCode = getPlayerLanguage(player);
         int currentIndex = -1;
         for (int i = 0; i < availableLangCodes.length; i++) {
             if (availableLangCodes[i].equals(currentLangCode)) {
@@ -255,9 +221,7 @@ public final class MyItemLibrary extends JavaPlugin implements Listener {
             }
         }
         int nextIndex = (currentIndex + 1) % availableLangCodes.length;
-        String newLangCode = availableLangCodes[nextIndex];
-
-        playerConfigHandler.setPlayerLanguage(player, newLangCode);
+        playerConfigHandler.setPlayerLanguage(player, availableLangCodes[nextIndex]);
     }
 
     public String getPlayerLanguage(Player player) {
@@ -267,7 +231,7 @@ public final class MyItemLibrary extends JavaPlugin implements Listener {
         return playerConfigHandler.getPlayerLanguage(player);
     }
 
-    // DOSss
+    // DoS protection
     private void loadDosProtectionConfig() {
         FileConfiguration config = getConfig();
         dosProtectionEnabled = config.getBoolean("c-api-dos-protection.enabled", true);
@@ -292,10 +256,6 @@ public final class MyItemLibrary extends JavaPlugin implements Listener {
     // Getters
     public CoDatabase getDatabase() {
         return database;
-    }
-
-    public Map<ItemStack, CommandDetails> getCommandMap() {
-        return commandMap;
     }
 
     public GUISettings getGuiSettings() {
@@ -326,13 +286,18 @@ public final class MyItemLibrary extends JavaPlugin implements Listener {
         return maxRequestSizeBytes;
     }
 
+    @SuppressWarnings("deprecation") // getDescription() is still the portable way across Spigot versions
     public String getPluginVersion() {
-        return pluginVersion;
+        return getDescription().getVersion();
     }
 
     // Player search mode methods
     public void setPlayerInSearchMode(UUID playerUUID, boolean inSearchMode) {
-        playerSearchMode.put(playerUUID, inSearchMode);
+        if (inSearchMode) {
+            playerSearchMode.put(playerUUID, true);
+        } else {
+            playerSearchMode.remove(playerUUID);
+        }
     }
 
     public boolean isPlayerInSearchMode(UUID playerUUID) {
