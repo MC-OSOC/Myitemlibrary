@@ -1,0 +1,33 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # paper-api 26.x is compiled for Java 25, so the build needs JDK 25.
+      # The plugin itself is emitted as Java 21 bytecode (see pom.xml).
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      - name: Build
+        run: mvn -B -ntp package
+
+      - name: Upload plugin jar
+        uses: actions/upload-artifact@v7
+        with:
+          name: MyItemLibrary
+          path: target/my-item-library-*.jar
+          if-no-files-found: error
