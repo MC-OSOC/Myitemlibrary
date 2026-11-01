@@ -46,7 +46,8 @@ if grep -B2 -A10 -E "Exception" server.log | grep -q "cakedek"; then fail "excep
 KEY=$(grep -E '^\s*c-api-key:' plugins/MyItemLibrary/config.yml | sed -E "s/^[^:]*:[[:space:]]*['\"]?([^'\"]*)['\"]?[[:space:]]*$/\1/")
 [ "${#KEY}" -ge 16 ] && pass "API key auto-generated (${#KEY} chars)" || fail "API key not generated: '$KEY'"
 
-code() { curl -s -o /tmp/body -w '%{http_code}' "$@"; }
+# Prints the HTTP status, or curl-exit-N if the connection failed (e.g. server closed it early).
+code() { local c; c=$(curl -s -o /tmp/body -w '%{http_code}' "$@") || c="curl-exit-$?"; echo "$c"; }
 expect() { local want=$1 desc=$2; shift 2; local got; got=$(code "$@"); [ "$got" = "$want" ] && pass "$desc ($got)" || { fail "$desc: expected $want got $got: $(head -c 200 /tmp/body)"; }; }
 
 ITEM='{"item_name":"&aTest Sword","item_display":"DIAMOND_SWORD","description":"smoke test","player":"Steve","command":"say <player> got a sword","used":1}'
@@ -65,7 +66,13 @@ expect 400 "invalid JSON rejected"         -H "X-API-Key: $KEY" -d '{not json' "
 expect 405 "wrong method rejected"         -H "X-API-Key: $KEY" "$API/add-item"
 head -c 2000000 /dev/zero | tr '\0' 'a' > /tmp/big
 expect 413 "oversized body rejected"       -H "X-API-Key: $KEY" --data-binary @/tmp/big "$API/add-item"
-expect 413 "oversized chunked body rejected" -H "X-API-Key: $KEY" -H "Transfer-Encoding: chunked" --data-binary @/tmp/big "$API/add-item"
+# For chunked uploads the server may close the connection before the client finished sending,
+# so a connection reset also counts as "rejected".
+got=$(code -H "X-API-Key: $KEY" -H "Transfer-Encoding: chunked" --data-binary @/tmp/big "$API/add-item")
+case "$got" in 413|curl-exit-52|curl-exit-55|curl-exit-56) pass "oversized chunked body rejected ($got)";; *) fail "oversized chunked body: got $got";; esac
+expect 200 "list items after oversized requests" -H "X-API-Key: $KEY" "$API/items"
+COUNT=$(python3 -c "import json; print(len(json.load(open('/tmp/body'))))")
+[ "$COUNT" = "1" ] && pass "oversized requests added nothing" || fail "expected 1 item, found $COUNT"
 expect 200 "delete item"                   -H "X-API-Key: $KEY" -X DELETE "$API/item/1"
 expect 404 "deleted item gone"             -H "X-API-Key: $KEY" "$API/item/1"
 
