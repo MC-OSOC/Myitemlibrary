@@ -77,5 +77,8 @@ For detailed information on request parameters, response formats, and examples, 
 - `my_item_library.admin` - Settings menu: toggle API, generate API key, reload the plugin (default: op)
 - `my_item_library.admin.reload` - Allows use of the `/my-library-reload` command (default: op)
 
+## Documentation
+Full documentation is in the [GitHub wiki](https://github.com/MC-OSOC/Myitemlibrary/wiki). The pages live in [`docs/wiki`](docs/wiki) and are published automatically.
+
 ## Support
 For support, feature requests, or bug reports, please open an issue on the GitHub repository.
