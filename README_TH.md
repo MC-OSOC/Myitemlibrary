@@ -78,5 +78,8 @@ MyItemLibrary มี RESTful API สำหรับการเชื่อม�
 - `my_item_library.admin` - เมนูตั้งค่า: เปิด/ปิด API, สร้างคีย์ API, โหลดปลั๊กอินใหม่ (ค่าเริ่มต้น: op)
 - `my_item_library.admin.reload` - อนุญาตให้ใช้คำสั่ง `/my-library-reload` (ค่าเริ่มต้น: op)
 
+## เอกสาร
+เอกสารฉบับเต็มอยู่ใน [GitHub wiki](https://github.com/MC-OSOC/Myitemlibrary/wiki) โดยไฟล์ต้นฉบับอยู่ที่ [`docs/wiki`](docs/wiki) และจะเผยแพร่ขึ้น wiki อัตโนมัติ
+
 ## การสนับสนุน
 สำหรับการสนับสนุน, คำขอฟีเจอร์ใหม่ หรือรายงานข้อบกพร่อง กรุณาเปิด issue บน GitHub repository
