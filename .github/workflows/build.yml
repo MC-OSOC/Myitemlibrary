@@ -52,10 +52,12 @@ jobs:
               state = "SKIPPED" if c.find("skipped") is not None else ("FAILED" if c.find("failure") is not None or c.find("error") is not None else "passed")
               print(f"{state:8} {c.get('name')}")
           names = [c.get("name") for c in cases if c.find("skipped") is None]
-          need = ["[sqlite]", "[mysql]", "concurrentMigrationOfSharedMysqlDatabase"]
+          # Parameterized tests run once per backend: [1] = SQLite, [2] = MySQL (see CoDatabaseTest.backends).
+          need = ["(String)[1]", "(String)[2]", "concurrentMigrationOfSharedMysqlDatabase"]
           missing = [n for n in need if not any(n in x for x in names)]
-          if missing:
-              sys.exit(f"database tests did not run for: {missing}")
+          if missing or len(names) != len(cases):
+              sys.exit(f"database tests did not run on both SQLite and MySQL (missing {missing}, {len(cases) - len(names)} skipped)")
+          print(f"{len(names)} database tests ran on SQLite and MySQL")
           PY
 
       - name: Upload plugin jar
