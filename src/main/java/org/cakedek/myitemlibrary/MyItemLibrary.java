@@ -10,10 +10,12 @@ import org.cakedek.myitemlibrary.api.Api;
 import org.cakedek.myitemlibrary.commands.CommandHandler;
 import org.cakedek.myitemlibrary.config.PlayerConfig;
 import org.cakedek.myitemlibrary.database.CoDatabase;
+import org.cakedek.myitemlibrary.database.DatabaseSettings;
 import org.cakedek.myitemlibrary.gui.GUIOpen;
 import org.cakedek.myitemlibrary.gui.GUISettings;
 import org.cakedek.myitemlibrary.gui.PaperChatListener;
 import org.cakedek.myitemlibrary.gui.SpigotChatListener;
+import org.cakedek.myitemlibrary.player.OnlinePlayers;
 import org.cakedek.myitemlibrary.util.Platform;
 
 import java.io.File;
@@ -32,6 +34,7 @@ public final class MyItemLibrary extends JavaPlugin {
     private GUIOpen guiOpen;
     private GUISettings guiSettings;
     private Api api;
+    private OnlinePlayers onlinePlayers;
     private final Map<String, YamlConfiguration> languageFiles = new LinkedHashMap<>();
     // Written from the async chat thread, so it must be thread-safe.
     private final Map<UUID, Boolean> playerSearchMode = new ConcurrentHashMap<>();
@@ -50,6 +53,9 @@ public final class MyItemLibrary extends JavaPlugin {
         playerConfigHandler = new PlayerConfig(this);
         loadLanguageFiles();
 
+        onlinePlayers = new OnlinePlayers(this);
+        onlinePlayers.registerOnlinePlayers();
+
         if (!setupDatabase()) {
             getLogger().severe("Failed to setup database. Disabling plugin.");
             getServer().getPluginManager().disablePlugin(this);
@@ -65,6 +71,7 @@ public final class MyItemLibrary extends JavaPlugin {
         getCommand("my-library").setExecutor(guiOpen);
 
         PluginManager pm = getServer().getPluginManager();
+        pm.registerEvents(onlinePlayers, this);
         pm.registerEvents(guiOpen, this);
         pm.registerEvents(guiSettings, this);
         // Each platform gets its own chat listener; PaperChatListener is never loaded on Spigot.
@@ -72,6 +79,8 @@ public final class MyItemLibrary extends JavaPlugin {
         getLogger().info("Running on " + Platform.name() + " " + getServer().getBukkitVersion());
 
         api.startServer();
+        // Players already online (e.g. after /reload) get their items bound as if they had just joined.
+        onlinePlayers.bindOnlinePlayers();
     }
 
     @Override
@@ -98,35 +107,48 @@ public final class MyItemLibrary extends JavaPlugin {
         }
         api = new Api(this);
         api.startServer();
+        if (ok) {
+            onlinePlayers.bindOnlinePlayers();
+        }
         return ok;
     }
 
     // Database methods
-    public synchronized boolean setupDatabase() {
-        String databaseMode = getConfig().getString("c-database-mode", "MySQL");
 
+    /**
+     * Opens the connection pool and migrates the tables. Runs on the main thread, but only at startup and on
+     * reload; all other database work runs on async tasks or API threads.
+     */
+    public synchronized boolean setupDatabase() {
+        FileConfiguration config = getConfig();
+        String databaseMode = config.getString("c-database-mode", "MySQL");
+
+        DatabaseSettings settings;
         if ("MySQL".equalsIgnoreCase(databaseMode)) {
-            String host = getConfig().getString("c-database.host");
-            String username = getConfig().getString("c-database.username");
-            String password = getConfig().getString("c-database.password");
-            String databaseName = getConfig().getString("c-database.database");
+            String host = config.getString("c-database.host");
+            String username = config.getString("c-database.username");
+            String password = config.getString("c-database.password");
+            String databaseName = config.getString("c-database.database");
 
             if (isBlank(host) || isBlank(username) || password == null || isBlank(databaseName)) {
                 getLogger().severe("MySQL database configuration is missing.");
                 return false;
             }
-        } else if (!"Local".equalsIgnoreCase(databaseMode)) {
+            settings = new DatabaseSettings(true, host, config.getInt("c-database.port", 3306), username, password,
+                    databaseName, config.getBoolean("c-database.use-ssl", false), null);
+        } else if ("Local".equalsIgnoreCase(databaseMode)) {
+            settings = DatabaseSettings.sqlite(new File(getDataFolder(), "database.db"));
+        } else {
             getLogger().severe("Invalid database mode specified in config: " + databaseMode);
             return false;
         }
 
-        CoDatabase newDatabase = new CoDatabase(this);
-        if (!newDatabase.connect() || !newDatabase.createTableIfNotExists()) {
-            newDatabase.close();
+        CoDatabase newDatabase = new CoDatabase(settings, getLogger());
+        if (!newDatabase.open()) {
             return false;
         }
 
-        // Close the previous connection so reloads do not leak connections.
+        // Close the previous pool so reloads do not leak connections.
         CoDatabase old = database;
         database = newDatabase;
         if (old != null) {
@@ -271,6 +293,10 @@ public final class MyItemLibrary extends JavaPlugin {
 
     public GUIOpen getGuiOpen() {
         return guiOpen;
+    }
+
+    public OnlinePlayers getOnlinePlayers() {
+        return onlinePlayers;
     }
 
     public Api getApi() {
