@@ -6,7 +6,7 @@
 
   <groupId>org.cakedek</groupId>
   <artifactId>my-item-library</artifactId>
-  <version>1.3</version>
+  <version>1.4</version>
   <packaging>jar</packaging>
 
   <name>my-item-library</name>
@@ -23,6 +23,7 @@
       Pinned to a stable build for reproducible builds; bump when a newer stable build is out.
     -->
     <paper.version>26.3.build.235-stable</paper.version>
+    <hikari.version>7.1.0</hikari.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
   </properties>
 
@@ -62,6 +63,43 @@
           </compilerArgs>
         </configuration>
       </plugin>
+      <!--
+        HikariCP is not shipped by Spigot (and Paper does not expose it to plugins), so it is bundled
+        and relocated to avoid clashing with other plugins that bundle a different version.
+        slf4j is NOT bundled: both Spigot and Paper provide slf4j-api at runtime (Minecraft itself uses it).
+      -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-shade-plugin</artifactId>
+        <version>3.6.2</version>
+        <executions>
+          <execution>
+            <phase>package</phase>
+            <goals>
+              <goal>shade</goal>
+            </goals>
+            <configuration>
+              <createDependencyReducedPom>false</createDependencyReducedPom>
+              <relocations>
+                <relocation>
+                  <pattern>com.zaxxer.hikari</pattern>
+                  <shadedPattern>org.cakedek.myitemlibrary.libs.hikari</shadedPattern>
+                </relocation>
+              </relocations>
+              <filters>
+                <filter>
+                  <artifact>com.zaxxer:HikariCP</artifact>
+                  <excludes>
+                    <exclude>module-info.class</exclude>
+                    <exclude>META-INF/MANIFEST.MF</exclude>
+                    <exclude>META-INF/maven/**</exclude>
+                  </excludes>
+                </filter>
+              </filters>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
     </plugins>
     <resources>
       <resource>
@@ -82,13 +120,25 @@
       <!--
         Paper API includes the full Bukkit/Spigot API, so the same jar runs on Spigot and Paper.
         Paper-only classes are used only in PaperChatListener, which is loaded only on Paper.
-        Gson, BungeeCord chat and the MySQL/SQLite JDBC drivers are provided by the server.
+        Gson, BungeeCord chat, slf4j and the MySQL/SQLite JDBC drivers are provided by the server.
       -->
       <dependency>
           <groupId>io.papermc.paper</groupId>
           <artifactId>paper-api</artifactId>
           <version>${paper.version}</version>
           <scope>provided</scope>
+      </dependency>
+      <dependency>
+          <groupId>com.zaxxer</groupId>
+          <artifactId>HikariCP</artifactId>
+          <version>${hikari.version}</version>
+          <exclusions>
+              <!-- Provided by the server at runtime. -->
+              <exclusion>
+                  <groupId>org.slf4j</groupId>
+                  <artifactId>slf4j-api</artifactId>
+              </exclusion>
+          </exclusions>
       </dependency>
   </dependencies>
 </project>
