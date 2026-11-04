@@ -32,7 +32,8 @@ jobs:
           path: target/my-item-library-*.jar
           if-no-files-found: error
 
-  # Start real servers with the plugin and test that it enables and the REST API works.
+  # Start real servers with the plugin: migration from the released 1.3 jar, the REST API,
+  # and (where mineflayer supports the version) a bot player that claims items through the GUI.
   smoke-test:
     needs: build
     runs-on: ubuntu-latest
@@ -41,11 +42,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { platform: paper,  mc: '26.3',   java: '25' }
-          - { platform: paper,  mc: '1.21.11', java: '21' }
-          - { platform: paper,  mc: '1.20.6', java: '21' }
-          - { platform: spigot, mc: '26.3',   java: '25' }
-    name: smoke ${{ matrix.platform }} ${{ matrix.mc }}
+          - { platform: paper,  mc: '26.3',    java: '25', db: sqlite }
+          - { platform: paper,  mc: '26.1',    java: '25', db: sqlite }
+          - { platform: paper,  mc: '1.21.11', java: '21', db: sqlite }
+          - { platform: paper,  mc: '1.21.11', java: '21', db: mysql }
+          - { platform: paper,  mc: '1.20.6',  java: '21', db: sqlite }
+          - { platform: spigot, mc: '26.3',    java: '25', db: sqlite }
+          - { platform: spigot, mc: '1.21.11', java: '21', db: sqlite }
+    name: smoke ${{ matrix.platform }} ${{ matrix.mc }} ${{ matrix.db }}
     steps:
       - uses: actions/checkout@v7
 
@@ -58,6 +62,28 @@ jobs:
         with:
           name: MyItemLibrary
           path: plugin
+
+      # The migration test starts with the released 1.3 jar, then swaps in this build.
+      - name: Download released 1.3 jar
+        run: curl -fsSL -o old-plugin.jar https://github.com/${{ github.repository }}/releases/download/1.3/my-item-library-1.3.jar
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      - name: Install bot (mineflayer)
+        run: cd .github/scripts/bot && npm install --no-audit --no-fund
+
+      - name: Start MySQL
+        if: matrix.db == 'mysql'
+        run: |
+          docker run -d --name mysql -p 3306:3306 \
+            -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=mil -e MYSQL_USER=mil -e MYSQL_PASSWORD=milpass mysql:8.4
+          for i in $(seq 1 60); do
+            docker exec mysql mysql -umil -pmilpass -h127.0.0.1 -e 'SELECT 1' mil >/dev/null 2>&1 && { echo "MySQL is up"; exit 0; }
+            sleep 2
+          done
+          docker logs mysql; exit 1
 
       - name: Download Paper ${{ matrix.mc }}
         if: matrix.platform == 'paper'
@@ -89,4 +115,14 @@ jobs:
         run: cp spigot-${{ matrix.mc }}.jar server.jar
 
       - name: Smoke test
+        env:
+          OLD_PLUGIN_JAR: old-plugin.jar
+          DB_MODE: ${{ matrix.db }}
+          MC_VERSION: ${{ matrix.mc }}
+          PLATFORM: ${{ matrix.platform }}
+          BOT_DIR: .github/scripts/bot
         run: .github/scripts/smoke-test.sh server.jar plugin/my-item-library-*.jar
+
+      - name: Show MySQL tables
+        if: always() && matrix.db == 'mysql'
+        run: docker exec mysql mysql -umil -pmilpass -h127.0.0.1 -e 'SHOW CREATE TABLE co_list_item\G SHOW TABLES' mil || true

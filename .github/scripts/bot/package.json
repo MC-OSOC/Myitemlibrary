@@ -1,0 +1,8 @@
+{
+  "name": "myitemlibrary-claim-bot",
+  "private": true,
+  "description": "Headless Minecraft client used by the CI smoke test to claim items through the GUI",
+  "dependencies": {
+    "mineflayer": "4.39.0"
+  }
+}
