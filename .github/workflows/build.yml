@@ -43,7 +43,7 @@ jobs:
       matrix:
         include:
           - { platform: paper,  mc: '26.3',    java: '25', db: sqlite }
-          - { platform: paper,  mc: '26.1',    java: '25', db: sqlite }
+          - { platform: paper,  mc: '26.1.2',  java: '25', db: sqlite }
           - { platform: paper,  mc: '1.21.11', java: '21', db: sqlite }
           - { platform: paper,  mc: '1.21.11', java: '21', db: mysql }
           - { platform: paper,  mc: '1.20.6',  java: '21', db: sqlite }
@@ -89,7 +89,12 @@ jobs:
         if: matrix.platform == 'paper'
         run: |
           UA="MyItemLibrary-CI (https://github.com/${{ github.repository }})"
-          URL=$(curl -fsSL -A "$UA" "https://fill.papermc.io/v3/projects/paper/versions/${{ matrix.mc }}/builds/latest" \
+          if ! curl -fsSL -A "$UA" -o latest.json "https://fill.papermc.io/v3/projects/paper/versions/${{ matrix.mc }}/builds/latest"; then
+            echo "::error::No Paper build for ${{ matrix.mc }}. Available versions:"
+            curl -fsSL -A "$UA" https://fill.papermc.io/v3/projects/paper | python3 -c "import sys,json; print(json.load(sys.stdin)['versions'])"
+            exit 1
+          fi
+          URL=$(cat latest.json \
             | python3 -c "import sys,json; print(json.load(sys.stdin)['downloads']['server:default']['url'])")
           echo "Downloading $URL"
           curl -fsSL -A "$UA" -o server.jar "$URL"

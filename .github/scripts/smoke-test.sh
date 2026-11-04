@@ -167,10 +167,12 @@ expect 400 "invalid order_id on /add-item-online" "${H[@]}" -d "$(item x Steve '
 expect 200 "64-char order_id with . _ : - accepted" "${H[@]}" -d "$(item 'Long Order' Steve 'say x' "\"order_id\":\"Ab.9_:-$(printf 'x%.0s' {1..57})\"")" "$API/add-item"
 
 # Concurrent duplicates: only one request may add items (the primary key decides, not a prior SELECT).
+RACE_PIDS=()
 for i in $(seq 1 10); do
   curl -s -o /dev/null -D "$WORK/race-$i" "${H[@]}" -d "$(item 'Race Item' Steve 'say race' '"order_id":"race-1"')" "$API/add-item" &
+  RACE_PIDS+=($!)
 done
-wait
+wait "${RACE_PIDS[@]}" # not a bare "wait": that would also wait for the server process
 REPLAYS=$(grep -li '^X-Idempotent-Replay: *true' "$WORK"/race-* | wc -l)
 OKS=$(grep -l '^HTTP/1.1 200' "$WORK"/race-* | wc -l)
 [ "$OKS" = "10" ] && [ "$REPLAYS" = "9" ] && pass "10 concurrent same-order requests: 10x 200, 9 replays" || fail "concurrent order: $OKS x 200, $REPLAYS replays"
@@ -238,11 +240,19 @@ expect 200 "delete item"                   "${H[@]}" -X DELETE "$API/item/$DEL_I
 expect 404 "deleted item gone"             "${H[@]}" "$API/item/$DEL_ID"
 
 # ---------------------------------------------------------------- GUI claim with a bot player
-BOT_SUPPORTED=no
-if [ -n "${BOT_DIR:-}" ] && (cd "$BOT_DIR" && node -e "process.exit(require('mineflayer').testedVersions.includes(process.argv[1]) ? 0 : 1)" "$MC_VERSION"); then
-  BOT_SUPPORTED=yes
+# The bot can join if mineflayer has a tested version with the same protocol number as the server
+# (e.g. mineflayer "26.1" also works for 26.1.2). Prints that version, or nothing.
+BOT_VERSION=
+if [ -n "${BOT_DIR:-}" ]; then
+  BOT_VERSION=$(cd "$BOT_DIR" && node -e "
+    const md = require('minecraft-data'); const v = process.argv[1];
+    const proto = (x) => { const d = md(x); return d && d.version.version; };
+    const p = proto(v);
+    const hit = p ? require('mineflayer').testedVersions.find((t) => proto(t) === p) : undefined;
+    if (hit) console.log(hit);" "$MC_VERSION" 2>/dev/null || true)
 fi
-if [ "$BOT_SUPPORTED" = "yes" ]; then
+if [ -n "$BOT_VERSION" ]; then
+  echo "Bot uses mineflayer version $BOT_VERSION for Minecraft $MC_VERSION"
   # Before the bot joins: one item by name only (bound on join) and one already bound to its UUID under an
   # old name (rename case: the join must update the name). Plus the migrated item and the add-item-all gift.
   expect 200 "bot item by name with order_id"  "${H[@]}" -d "$(item 'Bot Reward' "$BOT" 'say claimed-<player>' '"order_id":"bot-order-1"')" "$API/add-item"
@@ -250,7 +260,7 @@ if [ "$BOT_SUPPORTED" = "yes" ]; then
   BOT_ITEMS=2; [ "$MIGRATED" -gt 0 ] && BOT_ITEMS=4   # + migrated item + add-item-all gift
   BOUND_BY_NAME=$((BOT_ITEMS - 1))
 
-  if (cd "$BOT_DIR" && timeout 240 node claim-bot.js 127.0.0.1 25565 "$BOT" "$MC_VERSION") > "$WORK/bot.log" 2>&1; then
+  if (cd "$BOT_DIR" && timeout 240 node claim-bot.js 127.0.0.1 25565 "$BOT" "$BOT_VERSION") > "$WORK/bot.log" 2>&1; then
     pass "bot joined and finished"
   else
     fail "bot failed: $(tail -5 "$WORK/bot.log")"
