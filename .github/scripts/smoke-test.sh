@@ -76,7 +76,7 @@ cleanup() {
   for log in server-old.log server.log; do
     [ -f "$log" ] || continue
     echo "----- $log (MyItemLibrary / Hikari / SLF4J / errors) -----"
-    grep -E "MyItemLibrary|cakedek|Hikari|SLF4J|ERROR|Exception" "$log" || true
+    grep -E "MyItemLibrary|cakedek|Hikari|SLF4J|ERROR|Exception|Bot|lost connection|moved|Via" "$log" | grep -v "Bound [0-9]" || true
   done
   if [ -n "${GITHUB_STEP_SUMMARY:-}" ] && [ -f "$SUMMARY" ]; then
     { echo "### ${PLATFORM:-server} $MC_VERSION ($DB_MODE)"; echo '```'; cat "$SUMMARY"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

@@ -25,6 +25,15 @@ const bot = mineflayer.createBot({
   host, port: Number(port), username, version, auth: 'offline', physicsEnabled: physics !== 'off',
 });
 
+if (physics === 'off') {
+  // Through ViaBackwards on 26.3 the server kicks for invalid_player_movement as soon as a movement packet
+  // arrives, even with physics off (mineflayer still answers teleports with a position packet).
+  // The bot never needs to move: drop movement packets, keep the teleport confirmation.
+  const MOVEMENT = new Set(['position', 'position_look', 'look', 'flying', 'player_input']);
+  const write = bot._client.write.bind(bot._client);
+  bot._client.write = (name, params) => { if (!MOVEMENT.has(name)) write(name, params); };
+}
+
 const fail = (msg) => { console.error('BOT ERROR: ' + msg); process.exit(1); };
 setTimeout(() => fail('timed out'), 200000).unref();
 bot.on('kicked', (reason) => fail('kicked: ' + JSON.stringify(reason)));
