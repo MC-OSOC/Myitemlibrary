@@ -36,7 +36,7 @@ skip() { echo "SKIPPED: $*"; echo "SKIPPED: $*" >> "$SUMMARY"; }
 
 cd "$WORK"
 echo "eula=true" > eula.txt
-printf 'online-mode=false\nlevel-type=minecraft\\:flat\ngenerate-structures=false\nspawn-protection=0\nspawn-monsters=false\n' > server.properties
+printf 'online-mode=false\nlevel-type=minecraft\\:flat\ngenerate-structures=false\nspawn-protection=0\nspawn-monsters=false\nwhite-list=false\nenforce-whitelist=false\n' > server.properties
 mkdir -p plugins/MyItemLibrary
 # Default config with the API enabled and an EMPTY key: the plugin must generate one.
 # The rate limit is raised because this script sends far more than 100 requests per minute.
