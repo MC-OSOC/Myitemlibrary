@@ -13,9 +13,11 @@ import org.cakedek.myitemlibrary.MyItemLibrary;
 import org.cakedek.myitemlibrary.api.handlers.AddItemAllHandlers;
 import org.cakedek.myitemlibrary.api.handlers.AddItemHandlers;
 import org.cakedek.myitemlibrary.api.handlers.AddItemOnlineHandlers;
+import org.cakedek.myitemlibrary.api.handlers.ClaimsHandlers;
 import org.cakedek.myitemlibrary.api.handlers.GetShowAllItemsHandlers;
 import org.cakedek.myitemlibrary.api.handlers.ItemOperationsHandlers;
 import org.cakedek.myitemlibrary.api.handlers.PlayerItemsHandlers;
+import org.cakedek.myitemlibrary.database.CoDatabase;
 import org.cakedek.myitemlibrary.util.RateLimiter;
 
 import java.io.ByteArrayOutputStream;
@@ -99,6 +101,7 @@ public class Api {
             createProtectedContext("/add-item-online", new AddItemOnlineHandlers(plugin, this).new AddItemOnlineHandler(), true);
             createProtectedContext("/items", new GetShowAllItemsHandlers(plugin, this, gson).new GetShowAllItemsHandler(), true);
             createProtectedContext("/item/", new ItemOperationsHandlers(plugin, this, gson).new ItemOperationsHandler(), false);
+            createProtectedContext("/claims", new ClaimsHandlers(plugin, this, gson).new ClaimsHandler(), true);
 
             AtomicInteger threadId = new AtomicInteger();
             executor = Executors.newFixedThreadPool(4, r -> {
@@ -156,6 +159,8 @@ public class Api {
                 safeSend(exchange, 413, "Request Entity Too Large");
             } catch (BadRequestException e) {
                 safeSend(exchange, 400, "Bad Request: " + e.getMessage());
+            } catch (ServiceUnavailableException e) {
+                safeSend(exchange, 503, "Service Unavailable: database not connected");
             } catch (Exception e) {
                 plugin.getLogger().log(Level.SEVERE, "Error handling API request for path " + path, e);
                 safeSend(exchange, 500, "Internal Server Error");
@@ -238,6 +243,30 @@ public class Api {
         }
     }
 
+    /**
+     * Response of the add-item endpoints. A replayed order id gets 200 with header {@code X-Idempotent-Replay: true}
+     * so webshops can retry safely.
+     */
+    public void sendAddResult(HttpExchange exchange, CoDatabase.AddResult result, String orderId, String successMessage)
+            throws IOException {
+        if (result.replay()) {
+            exchange.getResponseHeaders().set("X-Idempotent-Replay", "true");
+            sendResponse(exchange, 200, "Order " + orderId + " was already processed (" + result.count()
+                    + " item(s)); nothing was added");
+        } else {
+            sendResponse(exchange, 200, successMessage);
+        }
+    }
+
+    /** The database, or throws so the request gets 503 while it is not connected. */
+    public CoDatabase database() {
+        CoDatabase database = plugin.getDatabase();
+        if (database == null) {
+            throw new ServiceUnavailableException();
+        }
+        return database;
+    }
+
     public void sendResponse(HttpExchange exchange, int statusCode, String response) throws IOException {
         String trimmed = response.trim();
         boolean json = trimmed.startsWith("{") || trimmed.startsWith("[");
@@ -267,6 +296,12 @@ public class Api {
     public static class BadRequestException extends RuntimeException {
         public BadRequestException(String message) {
             super(message);
+        }
+    }
+
+    private static class ServiceUnavailableException extends RuntimeException {
+        ServiceUnavailableException() {
+            super("Database not connected");
         }
     }
 

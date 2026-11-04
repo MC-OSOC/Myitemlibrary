@@ -1,5 +1,6 @@
 package org.cakedek.myitemlibrary.api.handlers;
 
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import org.cakedek.myitemlibrary.api.Api;
 import org.cakedek.myitemlibrary.util.Input;
@@ -36,5 +37,41 @@ record ItemRequest(String itemName, String itemDisplay, String description, Stri
             throw new Api.BadRequestException("Invalid player name");
         }
         return player;
+    }
+
+    /** Optional "player_uuid": null if absent or JSON null, otherwise it must be a valid UUID. */
+    static String parsePlayerUuid(JsonObject json) {
+        String uuid = optionalString(json, "player_uuid");
+        if (uuid == null) {
+            return null;
+        }
+        uuid = uuid.trim();
+        if (!Input.isValidUuid(uuid)) {
+            throw new Api.BadRequestException("Invalid player_uuid (expected xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)");
+        }
+        return Input.normalizeUuid(uuid);
+    }
+
+    /** Optional "order_id": null if absent or JSON null, otherwise 1-64 characters of [A-Za-z0-9._:-]. */
+    static String parseOrderId(JsonObject json) {
+        String orderId = optionalString(json, "order_id");
+        if (orderId == null) {
+            return null;
+        }
+        if (!Input.isValidOrderId(orderId)) {
+            throw new Api.BadRequestException("Invalid order_id (1-64 characters of A-Z a-z 0-9 . _ : -)");
+        }
+        return orderId;
+    }
+
+    private static String optionalString(JsonObject json, String field) {
+        JsonElement e = json.get(field);
+        if (e == null || e.isJsonNull()) {
+            return null;
+        }
+        if (!e.isJsonPrimitive() || !e.getAsJsonPrimitive().isString()) {
+            throw new Api.BadRequestException("Field '" + field + "' must be a string");
+        }
+        return e.getAsString();
     }
 }

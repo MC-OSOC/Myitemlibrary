@@ -31,7 +31,7 @@ public class GetShowAllItemsHandlers {
             }
 
             try {
-                List<ItemData> items = plugin.getDatabase().getAllItems();
+                List<ItemData> items = api.database().getAllItems();
                 api.sendResponse(exchange, 200, gson.toJson(items));
             } catch (SQLException e) {
                 plugin.getLogger().severe("Error fetching items: " + e.getMessage());
