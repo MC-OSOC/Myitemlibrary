@@ -8,6 +8,10 @@
 #   MC_VERSION      Minecraft version, used for the bot
 #   BOT_DIR         directory with claim-bot.js and an installed mineflayer; the GUI claim test runs only if
 #                   mineflayer supports MC_VERSION, otherwise it prints SKIPPED
+#   VIA_DIR         directory with ViaVersion/ViaBackwards jars; they are installed for the new jar so the bot
+#                   can join with VIA_BOT_VERSION when mineflayer does not support MC_VERSION itself
+#   VIA_BOT_VERSION mineflayer version to use through ViaBackwards (e.g. 26.1)
+#   MYSQL_CONTAINER docker container of the MySQL server (DB_MODE=mysql), used to simulate a slow database
 set -euo pipefail
 
 SERVER_JAR=$(realpath "$1")
@@ -17,6 +21,9 @@ DB_MODE=${DB_MODE:-sqlite}
 MC_VERSION=${MC_VERSION:-unknown}
 OLD_PLUGIN_JAR=${OLD_PLUGIN_JAR:+$(realpath "$OLD_PLUGIN_JAR")}
 BOT_DIR=${BOT_DIR:+$(realpath "$BOT_DIR")}
+VIA_DIR=${VIA_DIR:+$(realpath "$VIA_DIR")}
+# Test-only delay between the database claim and the reward (see GUIOpen), used by the guard/leave tests.
+CLAIM_DELAY_MS=4000
 WORK=$(mktemp -d)
 API="http://127.0.0.1:1558"
 FAILS=0
@@ -48,7 +55,7 @@ POOL_NAME=$([ "$DB_MODE" = "mysql" ] && echo "MyItemLibrary-MySQL" || echo "MyIt
 start_server() { # <log-file>
   local log=$1
   rm -f console && mkfifo console
-  java -Xmx1500M -jar "$SERVER_JAR" --nogui < console > "$log" 2>&1 &
+  java -Xmx1500M -Dmyitemlibrary.test.claimDelayMs=$CLAIM_DELAY_MS -jar "$SERVER_JAR" --nogui < console > "$log" 2>&1 &
   SERVER_PID=$!
   exec 3> console
   if ! timeout 900 bash -c 'until grep -q "Done (" '"$log"'; do sleep 2; kill -0 '"$SERVER_PID"' 2>/dev/null || exit 1; done'; then
@@ -109,6 +116,12 @@ fi
 
 # ---------------------------------------------------------------- phase 2: this build
 cp "$PLUGIN_JAR" plugins/
+VIA_INSTALLED=no
+if [ -n "${VIA_DIR:-}" ] && ls "$VIA_DIR"/*.jar >/dev/null 2>&1; then
+  cp "$VIA_DIR"/*.jar plugins/
+  VIA_INSTALLED=yes
+  echo "Installed for the bot: $(cd "$VIA_DIR" && ls *.jar | tr '\n' ' ')"
+fi
 start_server server.log
 
 grep -q "\[MyItemLibrary\] Running on" server.log && pass "plugin enabled: $(grep -o 'Running on .*' server.log | head -1)" || fail "plugin did not log 'Running on'"
@@ -251,8 +264,32 @@ if [ -n "${BOT_DIR:-}" ]; then
     const hit = p ? require('mineflayer').testedVersions.find((t) => proto(t) === p) : undefined;
     if (hit) console.log(hit);" "$MC_VERSION" 2>/dev/null || true)
 fi
+BOT_VIA=""
+if [ -z "$BOT_VERSION" ] && [ "$VIA_INSTALLED" = "yes" ] && [ -n "${VIA_BOT_VERSION:-}" ]; then
+  if grep -qE "\[ViaVersion\].*(Enabling|enabled)|Enabling ViaVersion" server.log && ! grep -qiE "ViaVersion.*(does not support|not compatible|unsupported)" server.log; then
+    BOT_VERSION=$VIA_BOT_VERSION
+    BOT_VIA=" (client $VIA_BOT_VERSION through ViaVersion/ViaBackwards)"
+  else
+    echo "ViaVersion did not enable on this server:"; grep -iE "via(version|backwards)" server.log | head -20 || true
+  fi
+fi
+
+# run_bot <name> <mode>: runs the bot, sets RESULT to its JSON result line (empty if none).
+run_bot() {
+  local name=$1 mode=$2 log="$WORK/bot-$1-$2.log"
+  if (cd "$BOT_DIR" && timeout 240 node claim-bot.js 127.0.0.1 25565 "$name" "$BOT_VERSION" "$mode" "$CLAIM_DELAY_MS") > "$log" 2>&1; then
+    pass "bot $name ($mode) joined and finished$BOT_VIA"
+  else
+    fail "bot $name ($mode) failed: $(tail -5 "$log")"
+  fi
+  sed "s/^/  [bot $name] /" "$log"
+  RESULT=$(grep -o 'RESULT {.*}' "$log" | tail -1 | sed 's/^RESULT //' || true)
+}
+r() { python3 -c "import json,sys; v=json.loads(sys.argv[1])['$1']; print(str(v).lower() if isinstance(v,bool) else v)" "${RESULT:-null}" 2>/dev/null || echo "?"; }
+said() { grep -c "\[Server\] $1\$" server.log || true; } # how often a "say <text>" reward ran
+
 if [ -n "$BOT_VERSION" ]; then
-  echo "Bot uses mineflayer version $BOT_VERSION for Minecraft $MC_VERSION"
+  echo "Bot uses mineflayer version $BOT_VERSION for Minecraft $MC_VERSION$BOT_VIA"
   # Before the bot joins: one item by name only (bound on join) and one already bound to its UUID under an
   # old name (rename case: the join must update the name). Plus the migrated item and the add-item-all gift.
   expect 200 "bot item by name with order_id"  "${H[@]}" -d "$(item 'Bot Reward' "$BOT" 'say claimed-<player>' '"order_id":"bot-order-1"')" "$API/add-item"
@@ -260,14 +297,7 @@ if [ -n "$BOT_VERSION" ]; then
   BOT_ITEMS=2; [ "$MIGRATED" -gt 0 ] && BOT_ITEMS=4   # + migrated item + add-item-all gift
   BOUND_BY_NAME=$((BOT_ITEMS - 1))
 
-  if (cd "$BOT_DIR" && timeout 240 node claim-bot.js 127.0.0.1 25565 "$BOT" "$BOT_VERSION") > "$WORK/bot.log" 2>&1; then
-    pass "bot joined and finished"
-  else
-    fail "bot failed: $(tail -5 "$WORK/bot.log")"
-  fi
-  cat "$WORK/bot.log"
-  RESULT=$(grep -o 'RESULT {.*}' "$WORK/bot.log" | sed 's/^RESULT //' || true)
-  r() { python3 -c "import json,sys; print(json.loads(sys.argv[1])['$1'])" "${RESULT:-null}" 2>/dev/null || echo "?"; }
+  run_bot "$BOT" claim
   [ "$(r initial)" = "$BOT_ITEMS" ] && pass "bot saw its $BOT_ITEMS items in /my-library (bound by UUID + renamed)" || fail "bot saw $(r initial) items, expected $BOT_ITEMS"
   [ "$(r claimed)" = "$BOT_ITEMS" ] && pass "bot claimed $BOT_ITEMS items by clicking" || fail "bot claimed $(r claimed), expected $BOT_ITEMS"
   [ "$(r final)" = "0" ] && pass "re-opened library is empty: nothing can be claimed twice" || fail "library still shows $(r final) items after claiming"
@@ -275,7 +305,7 @@ if [ -n "$BOT_VERSION" ]; then
 
   grep -q "Bound $BOUND_BY_NAME item(s) to $BOT ($BOT_UUID)" server.log && pass "join bound $BOUND_BY_NAME name-only items to $BOT_UUID" || fail "no 'Bound $BOUND_BY_NAME item(s) to $BOT' in log"
   for cmd in claimed renamed $([ "$MIGRATED" -gt 0 ] && echo "migrated all"); do
-    n=$(grep -c "\[Server\] $cmd-$BOT\$" server.log || true)
+    n=$(said "$cmd-$BOT")
     [ "$n" = "1" ] && pass "reward command '$cmd-<player>' ran exactly once" || fail "reward command '$cmd-$BOT' ran $n times"
   done
 
@@ -294,6 +324,60 @@ if [ -n "$BOT_VERSION" ]; then
   [ "$(json 'len(d)')" = "$BOT_ITEMS" ] && [ "$(json 'all(i["playerUuid"]=="'$BOT_UUID'" and i["player"]=="'$BOT'" and not i["enable"] for i in d)')" = "True" ] \
     && pass "all bot items bound to its UUID, renamed to $BOT and claimed" || fail "bot items: $(head -c 400 "$WORK/body")"
   expect 404 "old name has no items any more (renamed)" "${H[@]}" "$API/items/OldBotName"
+
+  # --- claim guard: a second click while the first claim is still running must be ignored
+  GB=GuardBot
+  expect 200 "guard bot item 1" "${H[@]}" -d "$(item 'Guard One' $GB 'say guard1-<player>')" "$API/add-item"
+  expect 200 "guard bot item 2" "${H[@]}" -d "$(item 'Guard Two' $GB 'say guard2-<player>')" "$API/add-item"
+  run_bot $GB guard
+  [ "$(r initial)" = "2" ] && pass "guard bot saw 2 items" || fail "guard bot saw $(r initial) items"
+  [ "$(r blocked)" = "true" ] && pass "click during a running claim was ignored (GUI stayed open)" || fail "click during a running claim was not ignored: $RESULT"
+  [ "$(r afterFirst)" = "1" ] && pass "only the first item was claimed while the guard was held" || fail "after the first claim $(r afterFirst) items left, expected 1"
+  [ "$(r final)" = "0" ] && pass "second item claimed normally after the guard was released" || fail "guard bot final: $(r final)"
+  sleep 1
+  [ "$(said guard1-$GB)" = "1" ] && [ "$(said guard2-$GB)" = "1" ] && pass "guard: each reward ran exactly once" \
+    || fail "guard rewards ran guard1=$(said guard1-$GB) guard2=$(said guard2-$GB) times"
+
+  # --- player leaves between the click and the reward: the claim must be undone
+  LB=LeaveBot
+  expect 200 "leave bot item" "${H[@]}" -d "$(item 'Leave Gift' $LB 'say leave-<player>' '"order_id":"leave-1"')" "$API/add-item"
+  run_bot $LB leave
+  [ "$(r initial)" = "1" ] && pass "leave bot saw its item" || fail "leave bot saw $(r initial) items"
+  sleep $(( CLAIM_DELAY_MS / 1000 + 3 ))
+  grep -q "$LB left before the reward command ran; claim of item [0-9]* was undone" server.log \
+    && pass "claim undone when the player left mid-claim" || fail "no 'claim ... was undone' log line for $LB"
+  [ "$(said leave-$LB)" = "0" ] && pass "reward did not run for the player who left" || fail "reward ran $(said leave-$LB) times for a player who left"
+  expect 200 "leave bot items" "${H[@]}" "$API/items/$LB"
+  [ "$(json 'd[0]["enable"]')" = "True" ] && [ "$(json 'd[0]["used"]')" = "1" ] && pass "item is claimable again (enable=true, used restored)" || fail "item after undo: $(head -c 300 "$WORK/body")"
+  expect 200 "/claims for the player who left" "${H[@]}" "$API/claims?order_id=leave-1"
+  [ "$(json 'len(d)')" = "0" ] && pass "undone claim removed from the claim log" || fail "claim log after undo: $(head -c 300 "$WORK/body")"
+  run_bot $LB claim
+  [ "$(r claimed)" = "1" ] && [ "$(r final)" = "0" ] && pass "player who left can claim the item after rejoining" || fail "rejoin claim: $RESULT"
+  sleep 1
+  [ "$(said leave-$LB)" = "1" ] && pass "reward ran exactly once after rejoining" || fail "reward after rejoin ran $(said leave-$LB) times"
+  expect 200 "/claims after rejoin" "${H[@]}" "$API/claims?order_id=leave-1"
+  [ "$(json 'len(d)')" = "1" ] && pass "one claim log row after rejoining" || fail "claim log after rejoin: $(json 'len(d)') rows"
+
+  # --- slow database: the GUI waits for MySQL, the server main thread must keep ticking
+  if [ "$DB_MODE" = "mysql" ] && [ -n "${MYSQL_CONTAINER:-}" ]; then
+    SB=SlowBot
+    expect 200 "slow bot item" "${H[@]}" -d "$(item 'Slow Gift' $SB 'say slow-<player>')" "$API/add-item"
+    # Hold a write lock on co_list_item for 10 s: every query on it waits, like a very slow database.
+    docker exec "$MYSQL_CONTAINER" mysql -umil -pmilpass -h127.0.0.1 mil \
+      -e "LOCK TABLES co_list_item WRITE; SELECT SLEEP(10); UNLOCK TABLES;" > "$WORK/lock.log" 2>&1 &
+    LOCK_PID=$!
+    sleep 1
+    run_bot $SB slow
+    wait "$LOCK_PID" || true
+    echo "slow database result: $RESULT"
+    [ "$(r initial)" = "1" ] && pass "GUI opened with the item once the database answered" || fail "slow bot saw $(r initial) items"
+    OPEN_MS=$(r openMs); GAP_MS=$(r maxGapMs)
+    [ "${OPEN_MS%%.*}" -ge 3000 ] 2>/dev/null && pass "GUI open waited for the locked table (${OPEN_MS} ms)" || fail "GUI opened in ${OPEN_MS} ms: the lock did not slow the query, test is not valid"
+    [ "${GAP_MS%%.*}" -lt 2500 ] 2>/dev/null && pass "main thread kept ticking while the database was blocked (max gap between time updates ${GAP_MS} ms)" \
+      || fail "server froze while the database was blocked (max gap ${GAP_MS} ms)"
+  else
+    skip "slow-database test needs MySQL (DB_MODE=$DB_MODE)"
+  fi
 else
   skip "bot not supported on $MC_VERSION (GUI claim test not run)"
 fi

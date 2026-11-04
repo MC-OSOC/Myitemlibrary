@@ -77,6 +77,9 @@ public final class MyItemLibrary extends JavaPlugin {
         // Each platform gets its own chat listener; PaperChatListener is never loaded on Spigot.
         pm.registerEvents(Platform.PAPER ? new PaperChatListener(guiOpen) : new SpigotChatListener(guiOpen), this);
         getLogger().info("Running on " + Platform.name() + " " + getServer().getBukkitVersion());
+        if (Long.getLong("myitemlibrary.test.claimDelayMs", 0L) > 0) {
+            getLogger().warning("Test option myitemlibrary.test.claimDelayMs is set: claims are delayed. Do not use this in production.");
+        }
 
         api.startServer();
         // Players already online (e.g. after /reload) get their items bound as if they had just joined.

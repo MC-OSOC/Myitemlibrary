@@ -49,6 +49,14 @@ public class GUIOpen implements CommandExecutor, Listener {
     private static final String BTN_LANGUAGE = "language";
     private static final String BTN_SETTINGS = "settings";
 
+    /**
+     * Test only: waits this long between the database claim and running the reward, so CI can test a player
+     * leaving mid-claim and the per-player claim guard. Off unless the JVM is started with
+     * {@code -Dmyitemlibrary.test.claimDelayMs=N} (capped at 10 s).
+     */
+    private static final long TEST_CLAIM_DELAY_MS =
+            Math.min(10_000L, Math.max(0L, Long.getLong("myitemlibrary.test.claimDelayMs", 0L)));
+
     private final MyItemLibrary plugin;
     private final NamespacedKey buttonKey;
     private final NamespacedKey itemIdKey;
@@ -359,6 +367,13 @@ public class GUIOpen implements CommandExecutor, Listener {
                 finishClaim(uuid, null);
                 return;
             }
+            if (TEST_CLAIM_DELAY_MS > 0) {
+                try {
+                    Thread.sleep(TEST_CLAIM_DELAY_MS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
             finishClaim(uuid, () -> runReward(player, database, itemId, claim, displayName));
         });
     }
@@ -387,6 +402,8 @@ public class GUIOpen implements CommandExecutor, Listener {
             Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
                 try {
                     database.undoClaim(itemId, claim.logId());
+                    plugin.getLogger().info(player.getName() + " left before the reward command ran; claim of item "
+                            + itemId + " was undone");
                 } catch (SQLException e) {
                     plugin.getLogger().log(Level.SEVERE, "Could not undo claim of item " + itemId
                             + " for a player who left; the reward was not given", e);

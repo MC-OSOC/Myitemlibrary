@@ -11,6 +11,20 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # The database tests (CoDatabaseTest) run against SQLite and this MySQL server.
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: mil
+          MYSQL_USER: mil
+          MYSQL_PASSWORD: milpass
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval 5s --health-timeout 5s --health-retries 30
     steps:
       - uses: actions/checkout@v7
 
@@ -22,8 +36,27 @@ jobs:
           java-version: '25'
           cache: maven
 
-      - name: Build
+      - name: Build and test
+        env:
+          MIL_TEST_MYSQL_HOST: 127.0.0.1
         run: mvn -B -ntp package
+
+      - name: Check the database tests ran on SQLite and MySQL
+        run: |
+          R=target/surefire-reports/TEST-org.cakedek.myitemlibrary.database.CoDatabaseTest.xml
+          python3 - "$R" <<'PY'
+          import sys, xml.etree.ElementTree as ET
+          suite = ET.parse(sys.argv[1]).getroot()
+          cases = suite.findall("testcase")
+          for c in cases:
+              state = "SKIPPED" if c.find("skipped") is not None else ("FAILED" if c.find("failure") is not None or c.find("error") is not None else "passed")
+              print(f"{state:8} {c.get('name')}")
+          names = [c.get("name") for c in cases if c.find("skipped") is None]
+          need = ["[sqlite]", "[mysql]", "concurrentMigrationOfSharedMysqlDatabase"]
+          missing = [n for n in need if not any(n in x for x in names)]
+          if missing:
+              sys.exit(f"database tests did not run for: {missing}")
+          PY
 
       - name: Upload plugin jar
         uses: actions/upload-artifact@v7
@@ -42,12 +75,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { platform: paper,  mc: '26.3',    java: '25', db: sqlite }
+          - { platform: paper,  mc: '26.3',    java: '25', db: sqlite, via: true }
           - { platform: paper,  mc: '26.1.2',  java: '25', db: sqlite }
           - { platform: paper,  mc: '1.21.11', java: '21', db: sqlite }
           - { platform: paper,  mc: '1.21.11', java: '21', db: mysql }
           - { platform: paper,  mc: '1.20.6',  java: '21', db: sqlite }
-          - { platform: spigot, mc: '26.3',    java: '25', db: sqlite }
+          - { platform: spigot, mc: '26.3',    java: '25', db: sqlite, via: true }
           - { platform: spigot, mc: '1.21.11', java: '21', db: sqlite }
     name: smoke ${{ matrix.platform }} ${{ matrix.mc }} ${{ matrix.db }}
     steps:
@@ -73,6 +106,29 @@ jobs:
 
       - name: Install bot (mineflayer)
         run: cd .github/scripts/bot && npm install --no-audit --no-fund
+
+      # mineflayer cannot speak 26.3 yet. ViaVersion + ViaBackwards on the server let a 26.1 client join,
+      # so the GUI claim tests can run on 26.3 too (the plugin code is the same; only the client is translated).
+      - name: Download ViaVersion and ViaBackwards
+        if: matrix.via
+        run: |
+          mkdir -p via
+          UA="MyItemLibrary-CI (https://github.com/${{ github.repository }})"
+          for p in viaversion viabackwards; do
+            Q="loaders=%5B%22${{ matrix.platform }}%22%5D"
+            curl -fsSL -A "$UA" "https://api.modrinth.com/v2/project/$p/version?$Q&game_versions=%5B%22${{ matrix.mc }}%22%5D" > "$p.json"
+            if [ "$(python3 -c "import json; print(len(json.load(open('$p.json'))))")" = "0" ]; then
+              echo "No $p release lists ${{ matrix.mc }}; using the newest ${{ matrix.platform }} release"
+              curl -fsSL -A "$UA" "https://api.modrinth.com/v2/project/$p/version?$Q" > "$p.json"
+            fi
+            read -r NAME URL < <(python3 -c "
+          import json
+          v = [x for x in json.load(open('$p.json')) if x['version_type'] == 'release'] or json.load(open('$p.json'))
+          f = next(f for f in v[0]['files'] if f['primary'])
+          print(f['filename'], f['url'])")
+            echo "$p: $NAME"
+            curl -fsSL -A "$UA" -o "via/$NAME" "$URL"
+          done
 
       - name: Start MySQL
         if: matrix.db == 'mysql'
@@ -126,6 +182,9 @@ jobs:
           MC_VERSION: ${{ matrix.mc }}
           PLATFORM: ${{ matrix.platform }}
           BOT_DIR: .github/scripts/bot
+          VIA_DIR: ${{ matrix.via && 'via' || '' }}
+          VIA_BOT_VERSION: '26.1'
+          MYSQL_CONTAINER: ${{ matrix.db == 'mysql' && 'mysql' || '' }}
         run: .github/scripts/smoke-test.sh server.jar plugin/my-item-library-*.jar
 
       - name: Show MySQL tables
