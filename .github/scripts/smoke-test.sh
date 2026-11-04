@@ -265,10 +265,12 @@ if [ -n "${BOT_DIR:-}" ]; then
     if (hit) console.log(hit);" "$MC_VERSION" 2>/dev/null || true)
 fi
 BOT_VIA=""
+BOT_PHYSICS=on
 if [ -z "$BOT_VERSION" ] && [ "$VIA_INSTALLED" = "yes" ] && [ -n "${VIA_BOT_VERSION:-}" ]; then
   if grep -qE "\[ViaVersion\].*(Enabling|enabled)|Enabling ViaVersion" server.log && ! grep -qiE "ViaVersion.*(does not support|not compatible|unsupported)" server.log; then
     BOT_VERSION=$VIA_BOT_VERSION
     BOT_VIA=" (client $VIA_BOT_VERSION through ViaVersion/ViaBackwards)"
+    BOT_PHYSICS=off # translated movement packets get the bot kicked; it does not need to move
   else
     echo "ViaVersion did not enable on this server:"; grep -iE "via(version|backwards)" server.log | head -20 || true
   fi
@@ -277,7 +279,7 @@ fi
 # run_bot <name> <mode>: runs the bot, sets RESULT to its JSON result line (empty if none).
 run_bot() {
   local name=$1 mode=$2 log="$WORK/bot-$1-$2.log"
-  if (cd "$BOT_DIR" && timeout 240 node claim-bot.js 127.0.0.1 25565 "$name" "$BOT_VERSION" "$mode" "$CLAIM_DELAY_MS") > "$log" 2>&1; then
+  if (cd "$BOT_DIR" && timeout 240 node claim-bot.js 127.0.0.1 25565 "$name" "$BOT_VERSION" "$mode" "$CLAIM_DELAY_MS" "$BOT_PHYSICS") > "$log" 2>&1; then
     pass "bot $name ($mode) joined and finished$BOT_VIA"
   else
     fail "bot $name ($mode) failed: $(tail -5 "$log")"

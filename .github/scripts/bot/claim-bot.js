@@ -1,7 +1,9 @@
 // Headless Minecraft client used by smoke-test.sh. Joins as an offline-mode player and drives /my-library.
 // Prints one line "RESULT {json}" with what it saw.
 //
-// Usage: node claim-bot.js <host> <port> <username> <mc-version> [mode] [claim-delay-ms]
+// Usage: node claim-bot.js <host> <port> <username> <mc-version> [mode] [claim-delay-ms] [physics]
+// physics: "on" (default) or "off". Off = the bot never sends movement packets; used through ViaBackwards,
+// where translated movement packets get the bot kicked for invalid movement. The bot does not need to move.
 // Modes:
 //   claim  (default) claim every item by clicking it; the first one is double-clicked.
 //          RESULT {"initial":N,"claimed":K,"final":M}
@@ -15,11 +17,13 @@
 //          RESULT {"initial":N,"openMs":T,"maxGapMs":G}
 const mineflayer = require('mineflayer');
 
-const [host, port, username, version, mode = 'claim', delayArg = '0'] = process.argv.slice(2);
+const [host, port, username, version, mode = 'claim', delayArg = '0', physics = 'on'] = process.argv.slice(2);
 const claimDelay = Number(delayArg);
 const GUI_ITEM_SLOTS = 45; // slots 0-44 hold items, 45-53 are buttons
 
-const bot = mineflayer.createBot({ host, port: Number(port), username, version, auth: 'offline' });
+const bot = mineflayer.createBot({
+  host, port: Number(port), username, version, auth: 'offline', physicsEnabled: physics !== 'off',
+});
 
 const fail = (msg) => { console.error('BOT ERROR: ' + msg); process.exit(1); };
 setTimeout(() => fail('timed out'), 200000).unref();
