@@ -185,7 +185,7 @@ jobs:
           PLATFORM: ${{ matrix.platform }}
           BOT_DIR: .github/scripts/bot
           VIA_DIR: ${{ matrix.via && 'via' || '' }}
-          VIA_BOT_VERSION: '26.1'
+          VIA_BOT_VERSION: '1.21.11'
           MYSQL_CONTAINER: ${{ matrix.db == 'mysql' && 'mysql' || '' }}
         run: .github/scripts/smoke-test.sh server.jar plugin/my-item-library-*.jar
 
