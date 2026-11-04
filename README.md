@@ -32,6 +32,8 @@ Requires **JDK 25** (paper-api 26.x is compiled for Java 25). The plugin itself 
 mvn package
 ```
 
+`mvn package` also runs the database tests on SQLite. To run them on MySQL too, set `MIL_TEST_MYSQL_HOST` (and optionally `MIL_TEST_MYSQL_PORT`, `_USER`, `_PASSWORD`, `_DATABASE`; defaults `3306`, `mil`, `milpass`, `mil`).
+
 ## Installation
 
 1. Download the latest release of MyItemLibrary from the releases page.
