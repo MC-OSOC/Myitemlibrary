@@ -117,10 +117,11 @@ jobs:
           mkdir -p via
           UA="MyItemLibrary-CI (https://github.com/${{ github.repository }})"
           for p in viaversion viabackwards; do
-            Q="loaders=%5B%22${{ matrix.platform }}%22%5D"
+            # One universal jar for Bukkit/Spigot/Paper; it is not always tagged with every loader.
+            Q="loaders=%5B%22paper%22,%22spigot%22,%22bukkit%22%5D"
             curl -fsSL -A "$UA" "https://api.modrinth.com/v2/project/$p/version?$Q&game_versions=%5B%22${{ matrix.mc }}%22%5D" > "$p.json"
             if [ "$(python3 -c "import json; print(len(json.load(open('$p.json'))))")" = "0" ]; then
-              echo "No $p release lists ${{ matrix.mc }}; using the newest ${{ matrix.platform }} release"
+              echo "No $p release lists ${{ matrix.mc }}; using the newest release"
               curl -fsSL -A "$UA" "https://api.modrinth.com/v2/project/$p/version?$Q" > "$p.json"
             fi
             read -r NAME URL < <(python3 -c "
