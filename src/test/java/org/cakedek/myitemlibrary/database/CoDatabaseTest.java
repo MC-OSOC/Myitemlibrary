@@ -31,7 +31,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Database layer tests. Always run against SQLite; also against MySQL when MIL_TEST_MYSQL_HOST is set
- * (CI starts a MySQL service). MIL_TEST_MYSQL_PORT/USER/PASSWORD/DATABASE default to 3306/mil/milpass/mil.
+ * (CI runs them against MySQL and MariaDB). MIL_TEST_MYSQL_PORT/USER/PASSWORD/DATABASE/SSL default to
+ * 3306/mil/milpass/mil/true; MariaDB is tested with MIL_TEST_MYSQL_SSL=false.
  */
 class CoDatabaseTest {
     private static final Logger LOG = Logger.getLogger("CoDatabaseTest");
@@ -63,7 +64,8 @@ class CoDatabaseTest {
         if ("mysql".equals(backend)) {
             return new DatabaseSettings(true, env("MIL_TEST_MYSQL_HOST", "127.0.0.1"),
                     Integer.parseInt(env("MIL_TEST_MYSQL_PORT", "3306")), env("MIL_TEST_MYSQL_USER", "mil"),
-                    env("MIL_TEST_MYSQL_PASSWORD", "milpass"), env("MIL_TEST_MYSQL_DATABASE", "mil"), true, null);
+                    env("MIL_TEST_MYSQL_PASSWORD", "milpass"), env("MIL_TEST_MYSQL_DATABASE", "mil"),
+                    Boolean.parseBoolean(env("MIL_TEST_MYSQL_SSL", "true")), null);
         }
         return DatabaseSettings.sqlite(tempDir.resolve("test-" + (++counter) + ".db").toFile());
     }

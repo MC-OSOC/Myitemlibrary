@@ -11,7 +11,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    # The database tests (CoDatabaseTest) run against SQLite and this MySQL server.
+    # The database tests (CoDatabaseTest) run against SQLite, MySQL and MariaDB (open source MySQL fork).
     services:
       mysql:
         image: mysql:8.4
@@ -24,6 +24,18 @@ jobs:
           - 3306:3306
         options: >-
           --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval 5s --health-timeout 5s --health-retries 30
+      mariadb:
+        image: mariadb:11.8
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_DATABASE: mil
+          MARIADB_USER: mil
+          MARIADB_PASSWORD: milpass
+        ports:
+          - 3307:3306
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized"
           --health-interval 5s --health-timeout 5s --health-retries 30
     steps:
       - uses: actions/checkout@v7
@@ -42,23 +54,16 @@ jobs:
         run: mvn -B -ntp package
 
       - name: Check the database tests ran on SQLite and MySQL
+        run: python3 .github/scripts/check-db-tests.py target/surefire-reports/TEST-org.cakedek.myitemlibrary.database.CoDatabaseTest.xml "MySQL 8.4"
+
+      - name: Database tests on MariaDB
+        env:
+          MIL_TEST_MYSQL_HOST: 127.0.0.1
+          MIL_TEST_MYSQL_PORT: '3307'
+          MIL_TEST_MYSQL_SSL: 'false'
         run: |
-          R=target/surefire-reports/TEST-org.cakedek.myitemlibrary.database.CoDatabaseTest.xml
-          python3 - "$R" <<'PY'
-          import sys, xml.etree.ElementTree as ET
-          suite = ET.parse(sys.argv[1]).getroot()
-          cases = suite.findall("testcase")
-          for c in cases:
-              state = "SKIPPED" if c.find("skipped") is not None else ("FAILED" if c.find("failure") is not None or c.find("error") is not None else "passed")
-              print(f"{state:8} {c.get('name')}")
-          names = [c.get("name") for c in cases if c.find("skipped") is None]
-          # Parameterized tests run once per backend: [1] = SQLite, [2] = MySQL (see CoDatabaseTest.backends).
-          need = ["(String)[1]", "(String)[2]", "concurrentMigrationOfSharedMysqlDatabase"]
-          missing = [n for n in need if not any(n in x for x in names)]
-          if missing or len(names) != len(cases):
-              sys.exit(f"database tests did not run on both SQLite and MySQL (missing {missing}, {len(cases) - len(names)} skipped)")
-          print(f"{len(names)} database tests ran on SQLite and MySQL")
-          PY
+          mvn -B -ntp surefire:test
+          python3 .github/scripts/check-db-tests.py target/surefire-reports/TEST-org.cakedek.myitemlibrary.database.CoDatabaseTest.xml "MariaDB 11.8"
 
       - name: Upload plugin jar
         uses: actions/upload-artifact@v7
@@ -78,11 +83,14 @@ jobs:
       matrix:
         include:
           - { platform: paper,  mc: '26.3',    java: '25', db: sqlite, via: true }
+          - { platform: paper,  mc: '26.3',    java: '25', db: mysql, via: true }
+          - { platform: paper,  mc: '26.3',    java: '25', db: mariadb, via: true }
           - { platform: paper,  mc: '26.1.2',  java: '25', db: sqlite }
           - { platform: paper,  mc: '1.21.11', java: '21', db: sqlite }
           - { platform: paper,  mc: '1.21.11', java: '21', db: mysql }
           - { platform: paper,  mc: '1.20.6',  java: '21', db: sqlite }
           - { platform: spigot, mc: '26.3',    java: '25', db: sqlite, via: true }
+          - { platform: spigot, mc: '26.3',    java: '25', db: mariadb, via: true }
           - { platform: spigot, mc: '1.21.11', java: '21', db: sqlite }
     name: smoke ${{ matrix.platform }} ${{ matrix.mc }} ${{ matrix.db }}
     steps:
@@ -136,13 +144,25 @@ jobs:
       - name: Start MySQL
         if: matrix.db == 'mysql'
         run: |
-          docker run -d --name mysql -p 3306:3306 \
+          docker run -d --name db -p 3306:3306 \
             -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=mil -e MYSQL_USER=mil -e MYSQL_PASSWORD=milpass mysql:8.4
           for i in $(seq 1 60); do
-            docker exec mysql mysql -umil -pmilpass -h127.0.0.1 -e 'SELECT 1' mil >/dev/null 2>&1 && { echo "MySQL is up"; exit 0; }
+            docker exec db mysql -umil -pmilpass -h127.0.0.1 -e 'SELECT 1' mil >/dev/null 2>&1 && { echo "MySQL is up"; exit 0; }
             sleep 2
           done
-          docker logs mysql; exit 1
+          docker logs db; exit 1
+
+      # MariaDB: the open source MySQL fork. The plugin talks to it in MySQL mode with the server's MySQL driver.
+      - name: Start MariaDB
+        if: matrix.db == 'mariadb'
+        run: |
+          docker run -d --name db -p 3306:3306 \
+            -e MARIADB_ROOT_PASSWORD=root -e MARIADB_DATABASE=mil -e MARIADB_USER=mil -e MARIADB_PASSWORD=milpass mariadb:11.8
+          for i in $(seq 1 60); do
+            docker exec db mariadb -umil -pmilpass -h127.0.0.1 -e 'SELECT 1' mil >/dev/null 2>&1 && { echo "MariaDB is up: $(docker exec db mariadb --version)"; exit 0; }
+            sleep 2
+          done
+          docker logs db; exit 1
 
       - name: Download Paper ${{ matrix.mc }}
         if: matrix.platform == 'paper'
@@ -181,15 +201,21 @@ jobs:
       - name: Smoke test
         env:
           OLD_PLUGIN_JAR: old-plugin.jar
-          DB_MODE: ${{ matrix.db }}
+          DB_MODE: ${{ matrix.db == 'sqlite' && 'sqlite' || 'mysql' }}
+          DB_LABEL: ${{ matrix.db }}
+          # MySQL 8.4 is tested with TLS, MariaDB without (also covers use-ssl: false).
+          DB_SSL: ${{ matrix.db == 'mariadb' && 'false' || 'true' }}
+          MYSQL_CLIENT: ${{ matrix.db == 'mariadb' && 'mariadb' || 'mysql' }}
           MC_VERSION: ${{ matrix.mc }}
           PLATFORM: ${{ matrix.platform }}
           BOT_DIR: .github/scripts/bot
           VIA_DIR: ${{ matrix.via && 'via' || '' }}
           VIA_BOT_VERSION: '1.21.11'
-          MYSQL_CONTAINER: ${{ matrix.db == 'mysql' && 'mysql' || '' }}
+          MYSQL_CONTAINER: ${{ matrix.db != 'sqlite' && 'db' || '' }}
         run: .github/scripts/smoke-test.sh server.jar plugin/my-item-library-*.jar
 
-      - name: Show MySQL tables
-        if: always() && matrix.db == 'mysql'
-        run: docker exec mysql mysql -umil -pmilpass -h127.0.0.1 -e 'SHOW CREATE TABLE co_list_item\G SHOW TABLES' mil || true
+      - name: Show database tables
+        if: always() && matrix.db != 'sqlite'
+        run: |
+          CLIENT=${{ matrix.db == 'mariadb' && 'mariadb' || 'mysql' }}
+          docker exec db $CLIENT -umil -pmilpass -h127.0.0.1 -e 'SELECT VERSION(); SHOW CREATE TABLE co_list_item\G SHOW TABLES' mil || true

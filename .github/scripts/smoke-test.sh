@@ -4,7 +4,10 @@
 # Usage: smoke-test.sh <server-jar> <plugin-jar>
 # Environment (all optional):
 #   OLD_PLUGIN_JAR  released jar to start with first (migration test: add items, stop, swap in the new jar)
-#   DB_MODE         sqlite (default) or mysql (expects MySQL on 127.0.0.1:3306, db/user "mil", password "milpass")
+#   DB_MODE         sqlite (default) or mysql (expects MySQL or MariaDB on 127.0.0.1:3306, db/user "mil", password "milpass")
+#   DB_SSL          for DB_MODE=mysql: value of c-database.use-ssl (default true)
+#   DB_LABEL        name of the database server for the summary, e.g. mysql or mariadb (default: DB_MODE)
+#   MYSQL_CLIENT    command-line client inside MYSQL_CONTAINER: mysql (default) or mariadb
 #   MC_VERSION      Minecraft version, used for the bot
 #   BOT_DIR         directory with claim-bot.js and an installed mineflayer; the GUI claim test runs only if
 #                   mineflayer supports MC_VERSION, otherwise it prints SKIPPED
@@ -18,6 +21,9 @@ SERVER_JAR=$(realpath "$1")
 PLUGIN_JAR=$(realpath "$2")
 REPO_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 DB_MODE=${DB_MODE:-sqlite}
+DB_SSL=${DB_SSL:-true}
+DB_LABEL=${DB_LABEL:-$DB_MODE}
+MYSQL_CLIENT=${MYSQL_CLIENT:-mysql}
 MC_VERSION=${MC_VERSION:-unknown}
 OLD_PLUGIN_JAR=${OLD_PLUGIN_JAR:+$(realpath "$OLD_PLUGIN_JAR")}
 BOT_DIR=${BOT_DIR:+$(realpath "$BOT_DIR")}
@@ -48,7 +54,8 @@ if [ "$DB_MODE" = "mysql" ]; then
          -e 's/  username: ""/  username: "mil"/' \
          -e 's/  password: ""/  password: "milpass"/' \
          -e 's/  database: ""/  database: "mil"/' \
-         -e 's/  use-ssl: false/  use-ssl: true/' plugins/MyItemLibrary/config.yml
+         -e "s/  use-ssl: false/  use-ssl: $DB_SSL/" plugins/MyItemLibrary/config.yml
+  echo "Database: $DB_LABEL (use-ssl: $DB_SSL)"
 fi
 POOL_NAME=$([ "$DB_MODE" = "mysql" ] && echo "MyItemLibrary-MySQL" || echo "MyItemLibrary-SQLite")
 
@@ -79,7 +86,7 @@ cleanup() {
     grep -E "MyItemLibrary|cakedek|Hikari|SLF4J|ERROR|Exception|Bot|lost connection|moved|Via" "$log" | grep -v "Bound [0-9]" || true
   done
   if [ -n "${GITHUB_STEP_SUMMARY:-}" ] && [ -f "$SUMMARY" ]; then
-    { echo "### ${PLATFORM:-server} $MC_VERSION ($DB_MODE)"; echo '```'; cat "$SUMMARY"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+    { echo "### ${PLATFORM:-server} $MC_VERSION ($DB_LABEL)"; echo '```'; cat "$SUMMARY"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
   fi
 }
 trap cleanup EXIT
@@ -365,7 +372,7 @@ if [ -n "$BOT_VERSION" ]; then
     SB=SlowBot
     expect 200 "slow bot item" "${H[@]}" -d "$(item 'Slow Gift' $SB 'say slow-<player>')" "$API/add-item"
     # Hold a write lock on co_list_item for 10 s: every query on it waits, like a very slow database.
-    docker exec "$MYSQL_CONTAINER" mysql -umil -pmilpass -h127.0.0.1 mil \
+    docker exec "$MYSQL_CONTAINER" "$MYSQL_CLIENT" -umil -pmilpass -h127.0.0.1 mil \
       -e "LOCK TABLES co_list_item WRITE; SELECT SLEEP(10); UNLOCK TABLES;" > "$WORK/lock.log" 2>&1 &
     LOCK_PID=$!
     sleep 1
@@ -378,7 +385,7 @@ if [ -n "$BOT_VERSION" ]; then
     [ "${GAP_MS%%.*}" -lt 2500 ] 2>/dev/null && pass "main thread kept ticking while the database was blocked (max gap between time updates ${GAP_MS} ms)" \
       || fail "server froze while the database was blocked (max gap ${GAP_MS} ms)"
   else
-    skip "slow-database test needs MySQL (DB_MODE=$DB_MODE)"
+    skip "slow-database test needs MySQL or MariaDB (database: $DB_LABEL)"
   fi
 else
   skip "bot not supported on $MC_VERSION (GUI claim test not run)"
