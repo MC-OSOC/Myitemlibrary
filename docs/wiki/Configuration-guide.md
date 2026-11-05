@@ -25,9 +25,10 @@ c-database:
 ```
 
 - **Local**: an SQLite file `database.db` is created in the plugin folder. Nothing else to configure.
-- **MySQL**: fill in `c-database`. The table `co_list_item` is created automatically.
+- **MySQL**: fill in `c-database`. MariaDB works too (use MySQL mode; tested with MariaDB 11.8 and MySQL 8.4). The tables (`co_list_item`, `co_orders`, `co_claim_log`) are created and migrated automatically. MySQL uses a small connection pool (HikariCP, bundled in the jar, max 6 connections).
 - `use-ssl`: set to `true` when the database is not on the same machine. Your MySQL server must have SSL enabled.
-- If the connection drops (for example MySQL `wait_timeout`), the plugin reconnects automatically.
+- If a connection drops (for example MySQL `wait_timeout`), the pool replaces it automatically.
+- Database work (opening the GUI, claiming, API requests) runs off the server main thread, so a slow database does not freeze the server.
 
 ## API Configuration
 

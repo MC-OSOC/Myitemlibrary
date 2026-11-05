@@ -1,2 +1,4 @@
 /.idea/
 /target/
+/.github/scripts/bot/node_modules/
+/.github/scripts/bot/package-lock.json

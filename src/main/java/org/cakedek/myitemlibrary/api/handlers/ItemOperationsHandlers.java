@@ -55,7 +55,7 @@ public class ItemOperationsHandlers {
 
         private void handleGetItem(HttpExchange exchange, int itemId) throws IOException {
             try {
-                ItemData item = plugin.getDatabase().getItem(itemId);
+                ItemData item = api.database().getItem(itemId);
                 if (item != null) {
                     api.sendResponse(exchange, 200, gson.toJson(item));
                 } else {
@@ -69,7 +69,7 @@ public class ItemOperationsHandlers {
 
         private void handleDeleteItem(HttpExchange exchange, int itemId) throws IOException {
             try {
-                if (plugin.getDatabase().deleteItem(itemId)) {
+                if (api.database().deleteItem(itemId)) {
                     api.sendResponse(exchange, 200, "Item deleted successfully");
                 } else {
                     api.sendResponse(exchange, 404, "Item not found");

@@ -8,8 +8,10 @@ My library ready-to-use commands in a MySQL repository for Minecraft Server
 - Custom item libraries for each player
 - GUI-based item management system
 - Multi-language support (currently English and Thai)
-- MySQL and SQLite database support
-- RESTful API for external integrations
+- MySQL (connection pool) and SQLite database support; database work runs off the server main thread
+- Items are bound to the player's UUID, so name changes do not lose rewards
+- RESTful API for external integrations, with idempotent `order_id`s for safe webshop retries
+- Claim log (who claimed what and when)
 - DoS protection for API endpoints
 
 ## Requirements
@@ -29,6 +31,8 @@ Requires **JDK 25** (paper-api 26.x is compiled for Java 25). The plugin itself 
 ```bash
 mvn package
 ```
+
+`mvn package` also runs the database tests on SQLite. To run them on MySQL too, set `MIL_TEST_MYSQL_HOST` (and optionally `MIL_TEST_MYSQL_PORT`, `_USER`, `_PASSWORD`, `_DATABASE`; defaults `3306`, `mil`, `milpass`, `mil`).
 
 ## Installation
 
@@ -54,13 +58,16 @@ After the first run, the plugin will generate a `config.yml` file in the `plugin
 
 MyItemLibrary provides a RESTful API for external integrations. The API endpoints include:
 
-- GET `/items/{playerName}` - Retrieve items for a specific player
+- GET `/items/{playerName}` or `/items/{uuid}` - Retrieve items for a specific player
 - POST `/add-item` - Add an item to a player's library
 - POST `/add-item-all` - Add an item to all players' libraries
 - POST `/add-item-online` - Add an item to all online players' libraries
 - GET `/items` - Retrieve all items in the database
 - GET `/item/{itemId}` - Retrieve a specific item by ID
 - DELETE `/item/{itemId}` - Delete a specific item by ID
+- GET `/claims` - Claim log (filters: `player`, `uuid`, `order_id`, `since`, `limit`)
+
+The add-item endpoints accept an optional `order_id`: repeating it adds nothing and returns `200` with header `X-Idempotent-Replay: true`.
 
 API requests require an API key in the `X-API-Key` header.
 

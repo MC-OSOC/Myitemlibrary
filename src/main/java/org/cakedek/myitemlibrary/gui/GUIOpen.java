@@ -32,6 +32,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
@@ -48,11 +49,21 @@ public class GUIOpen implements CommandExecutor, Listener {
     private static final String BTN_LANGUAGE = "language";
     private static final String BTN_SETTINGS = "settings";
 
+    /**
+     * Test only: waits this long between the database claim and running the reward, so CI can test a player
+     * leaving mid-claim and the per-player claim guard. Off unless the JVM is started with
+     * {@code -Dmyitemlibrary.test.claimDelayMs=N} (capped at 10 s).
+     */
+    private static final long TEST_CLAIM_DELAY_MS =
+            Math.min(10_000L, Math.max(0L, Long.getLong("myitemlibrary.test.claimDelayMs", 0L)));
+
     private final MyItemLibrary plugin;
     private final NamespacedKey buttonKey;
     private final NamespacedKey itemIdKey;
     // Read from the async chat thread, so it must be thread-safe.
     private final Map<UUID, String> playerSearchMap = new ConcurrentHashMap<>();
+    // Players whose claim is running on an async task; further clicks are ignored until it finished.
+    private final Set<UUID> claimsInProgress = ConcurrentHashMap.newKeySet();
 
     public GUIOpen(MyItemLibrary plugin) {
         this.plugin = plugin;
@@ -87,6 +98,10 @@ public class GUIOpen implements CommandExecutor, Listener {
         return true;
     }
 
+    /**
+     * Main thread. Loads the player's items on an async task, then opens the GUI back on the main thread,
+     * so a slow database never blocks the server.
+     */
     public void openLibraryGui(Player player, int page) {
         CoDatabase database = plugin.getDatabase();
         if (database == null) {
@@ -94,41 +109,65 @@ public class GUIOpen implements CommandExecutor, Listener {
             return;
         }
 
-        try {
-            String searchTerm = playerSearchMap.getOrDefault(player.getUniqueId(), "");
-            List<ItemData> items = database.getEnabledItems(player.getName(), searchTerm);
-
-            int totalPages = Math.max(1, (int) Math.ceil(items.size() / (double) ITEMS_PER_PAGE));
-            page = Math.max(0, Math.min(page, totalPages - 1));
-
-            LibraryGUIHolder holder = new LibraryGUIHolder(player.getUniqueId(), page);
-            Inventory gui = Bukkit.createInventory(holder, INVENTORY_SIZE, plugin.getTranslation("gui.title", page + 1, player));
-            holder.inventory = gui;
-
-            int start = page * ITEMS_PER_PAGE;
-            int end = Math.min(start + ITEMS_PER_PAGE, items.size());
-            for (int i = start; i < end; i++) {
-                gui.setItem(i - start, createItemStack(items.get(i)));
+        UUID uuid = player.getUniqueId();
+        String name = player.getName();
+        String searchTerm = playerSearchMap.getOrDefault(uuid, "");
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            List<ItemData> items;
+            try {
+                items = database.getEnabledItems(uuid.toString(), name, searchTerm);
+            } catch (SQLException e) {
+                plugin.getLogger().log(Level.SEVERE, "An error occurred while fetching the item list.", e);
+                runOnMainThread(() -> {
+                    if (player.isOnline()) {
+                        player.sendMessage(plugin.getTranslation("messages.db_error", player));
+                    }
+                });
+                return;
             }
+            runOnMainThread(() -> {
+                if (player.isOnline()) {
+                    showLibraryGui(player, page, items);
+                }
+            });
+        });
+    }
 
-            if (page > 0) {
-                gui.setItem(45, createButton(Material.ARROW, plugin.getTranslation("gui.prev_page", player), null, BTN_PREV));
-            }
-            if (page < totalPages - 1) {
-                gui.setItem(53, createButton(Material.ARROW, plugin.getTranslation("gui.next_page", player), null, BTN_NEXT));
-            }
-            gui.setItem(49, createButton(Material.COMPASS, plugin.getTranslation("gui.search", player), createSearchLore(player), BTN_SEARCH));
-            gui.setItem(50, createButton(Material.BOOK, plugin.getTranslation("gui.switch_language", player), createLanguageSwitchLore(player), BTN_LANGUAGE));
-            if (player.hasPermission(MyItemLibrary.PERMISSION_ADMIN)) {
-                gui.setItem(51, createButton(Material.REDSTONE, plugin.getTranslation("gui.settings.name", player),
-                        Collections.singletonList(plugin.getTranslation("gui.settings.description", player)), BTN_SETTINGS));
-            }
-
-            player.openInventory(gui);
-        } catch (SQLException e) {
-            player.sendMessage(plugin.getTranslation("messages.db_error", player));
-            plugin.getLogger().log(Level.SEVERE, "An error occurred while fetching the item list.", e);
+    /** Schedules a task on the main thread unless the plugin was disabled in the meantime. */
+    private void runOnMainThread(Runnable task) {
+        if (plugin.isEnabled()) {
+            Bukkit.getScheduler().runTask(plugin, task);
         }
+    }
+
+    private void showLibraryGui(Player player, int page, List<ItemData> items) {
+        int totalPages = Math.max(1, (int) Math.ceil(items.size() / (double) ITEMS_PER_PAGE));
+        page = Math.max(0, Math.min(page, totalPages - 1));
+
+        LibraryGUIHolder holder = new LibraryGUIHolder(player.getUniqueId(), page);
+        Inventory gui = Bukkit.createInventory(holder, INVENTORY_SIZE, plugin.getTranslation("gui.title", page + 1, player));
+        holder.inventory = gui;
+
+        int start = page * ITEMS_PER_PAGE;
+        int end = Math.min(start + ITEMS_PER_PAGE, items.size());
+        for (int i = start; i < end; i++) {
+            gui.setItem(i - start, createItemStack(items.get(i)));
+        }
+
+        if (page > 0) {
+            gui.setItem(45, createButton(Material.ARROW, plugin.getTranslation("gui.prev_page", player), null, BTN_PREV));
+        }
+        if (page < totalPages - 1) {
+            gui.setItem(53, createButton(Material.ARROW, plugin.getTranslation("gui.next_page", player), null, BTN_NEXT));
+        }
+        gui.setItem(49, createButton(Material.COMPASS, plugin.getTranslation("gui.search", player), createSearchLore(player), BTN_SEARCH));
+        gui.setItem(50, createButton(Material.BOOK, plugin.getTranslation("gui.switch_language", player), createLanguageSwitchLore(player), BTN_LANGUAGE));
+        if (player.hasPermission(MyItemLibrary.PERMISSION_ADMIN)) {
+            gui.setItem(51, createButton(Material.REDSTONE, plugin.getTranslation("gui.settings.name", player),
+                    Collections.singletonList(plugin.getTranslation("gui.settings.description", player)), BTN_SETTINGS));
+        }
+
+        player.openInventory(gui);
     }
 
     private ItemStack createItemStack(ItemData data) {
@@ -283,6 +322,10 @@ public class GUIOpen implements CommandExecutor, Listener {
         }
     }
 
+    /**
+     * Main thread. Claims the item on an async task (atomic claim + claim log in one transaction),
+     * then runs the reward command back on the main thread.
+     */
     private void handleItemClick(Player player, int itemId, String displayName) {
         CoDatabase database = plugin.getDatabase();
         if (database == null) {
@@ -298,26 +341,77 @@ public class GUIOpen implements CommandExecutor, Listener {
             return;
         }
 
-        String command;
-        try {
-            command = database.claimItem(itemId, player.getName());
-        } catch (SQLException e) {
-            player.sendMessage(plugin.getTranslation("messages.db_error", player));
-            plugin.getLogger().log(Level.SEVERE, "An error occurred while claiming item " + itemId, e);
+        UUID uuid = player.getUniqueId();
+        // Fast double clicks must not start a second claim while the first one is still running.
+        if (!claimsInProgress.add(uuid)) {
             return;
         }
-
         player.closeInventory();
-        if (command == null) {
-            // Already claimed, or not this player's item.
+
+        String name = player.getName();
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            CoDatabase.Claim claim;
+            try {
+                claim = database.claimItem(itemId, uuid.toString(), name);
+            } catch (SQLException e) {
+                plugin.getLogger().log(Level.SEVERE, "An error occurred while claiming item " + itemId, e);
+                finishClaim(uuid, () -> {
+                    if (player.isOnline()) {
+                        player.sendMessage(plugin.getTranslation("messages.db_error", player));
+                    }
+                });
+                return;
+            }
+            if (claim == null) {
+                // Already claimed, or not this player's item.
+                finishClaim(uuid, null);
+                return;
+            }
+            if (TEST_CLAIM_DELAY_MS > 0) {
+                try {
+                    Thread.sleep(TEST_CLAIM_DELAY_MS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+            finishClaim(uuid, () -> runReward(player, database, itemId, claim, displayName));
+        });
+    }
+
+    /** Back on the main thread: runs the follow-up (if any) and releases the per-player claim guard. */
+    private void finishClaim(UUID uuid, Runnable onMainThread) {
+        if (!plugin.isEnabled()) {
+            claimsInProgress.remove(uuid);
             return;
         }
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            try {
+                if (onMainThread != null) {
+                    onMainThread.run();
+                }
+            } finally {
+                claimsInProgress.remove(uuid);
+            }
+        });
+    }
 
-        String commandToRun = command.replace("<player>", player.getName());
-        if (commandToRun.startsWith("/")) {
-            commandToRun = commandToRun.substring(1);
+    private void runReward(Player player, CoDatabase database, int itemId, CoDatabase.Claim claim, String displayName) {
+        if (!player.isOnline()) {
+            // The player left between the click and now: give the item back instead of running the
+            // command for someone who is not there (a "give" would be lost).
+            Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+                try {
+                    database.undoClaim(itemId, claim.logId());
+                    plugin.getLogger().info(player.getName() + " left before the reward command ran; claim of item "
+                            + itemId + " was undone");
+                } catch (SQLException e) {
+                    plugin.getLogger().log(Level.SEVERE, "Could not undo claim of item " + itemId
+                            + " for a player who left; the reward was not given", e);
+                }
+            });
+            return;
         }
-        Bukkit.dispatchCommand(Bukkit.getConsoleSender(), commandToRun);
+        Bukkit.dispatchCommand(Bukkit.getConsoleSender(), claim.command());
         player.sendMessage(plugin.getTranslation("gui.item_received", displayName, player));
     }
 
@@ -365,5 +459,6 @@ public class GUIOpen implements CommandExecutor, Listener {
         UUID id = event.getPlayer().getUniqueId();
         playerSearchMap.remove(id);
         plugin.setPlayerInSearchMode(id, false);
+        // Not the claim guard: an in-flight claim releases it itself (and undoes the claim, see runReward).
     }
 }

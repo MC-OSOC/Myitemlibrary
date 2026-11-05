@@ -6,12 +6,12 @@ import com.sun.net.httpserver.HttpHandler;
 import org.cakedek.myitemlibrary.MyItemLibrary;
 import org.cakedek.myitemlibrary.api.Api;
 import org.cakedek.myitemlibrary.database.ItemData;
+import org.cakedek.myitemlibrary.util.Input;
 
 import java.io.IOException;
 import java.sql.SQLException;
 import java.util.List;
 
-import static org.cakedek.myitemlibrary.util.Input.isValidPlayerName;
 
 public class PlayerItemsHandlers {
     private final MyItemLibrary plugin;
@@ -39,14 +39,18 @@ public class PlayerItemsHandlers {
                 return;
             }
 
+            // Either a player name (case-insensitive) or a UUID.
             String playerName = pathParts[2];
-            if (!isValidPlayerName(playerName)) {
-                api.sendResponse(exchange, 400, "Invalid player name");
+            boolean byUuid = Input.isValidUuid(playerName);
+            if (!byUuid && !Input.isValidPlayerName(playerName)) {
+                api.sendResponse(exchange, 400, "Invalid player name or UUID");
                 return;
             }
 
             try {
-                List<ItemData> items = plugin.getDatabase().getItemsByPlayer(playerName);
+                List<ItemData> items = byUuid
+                        ? api.database().getItemsByUuid(Input.normalizeUuid(playerName))
+                        : api.database().getItemsByPlayer(playerName);
                 if (items.isEmpty()) {
                     api.sendResponse(exchange, 404, "No items found for player: " + playerName);
                 } else {
