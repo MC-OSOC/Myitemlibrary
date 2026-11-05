@@ -27,8 +27,8 @@ echo "=== $LABEL with MySQL use-ssl: false, expecting: $EXPECT ==="
 # Fresh authentication state: restart MySQL (clears the caching_sha2_password cache).
 docker restart "$DB" > /dev/null
 for i in $(seq 1 60); do
-  # Ping as root over the local socket: this must not log in as 'mil' (that would cache its hash).
-  docker exec "$DB" mysqladmin ping -uroot -proot --silent > /dev/null 2>&1 && break
+  # Log in as root over the local socket: this must not log in as 'mil' (that would cache its hash).
+  docker exec "$DB" mysql -uroot -proot -e 'SELECT 1' > /dev/null 2>&1 && break
   sleep 2
 done
 echo "MySQL restarted: $(docker exec "$DB" mysql -uroot -proot -N -e 'SELECT VERSION()' 2>/dev/null)"

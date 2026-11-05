@@ -105,8 +105,10 @@ jobs:
         run: |
           docker run -d --name db -p 3306:3306 \
             -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=mil -e MYSQL_USER=mil -e MYSQL_PASSWORD=milpass mysql:8.4
-          for i in $(seq 1 60); do
-            docker exec db mysqladmin ping -uroot -proot --silent >/dev/null 2>&1 && break
+          # Wait for the final server (the entrypoint first runs a temporary one without a TCP port).
+          # Log in as root over the socket only, never as 'mil' (that would cache its password hash).
+          for i in $(seq 1 90); do
+            docker logs db 2>&1 | grep -q "port: 3306 " && docker exec db mysql -uroot -proot -e 'SELECT 1' >/dev/null 2>&1 && break
             sleep 2
           done
           docker exec db mysql -uroot -proot -e "SELECT user, plugin FROM mysql.user WHERE user = 'mil'"
