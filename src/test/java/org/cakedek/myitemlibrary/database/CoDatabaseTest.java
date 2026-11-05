@@ -31,8 +31,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Database layer tests. Always run against SQLite; also against MySQL when MIL_TEST_MYSQL_HOST is set
- * (CI runs them against MySQL and MariaDB). MIL_TEST_MYSQL_PORT/USER/PASSWORD/DATABASE/SSL default to
- * 3306/mil/milpass/mil/true; MariaDB is tested with MIL_TEST_MYSQL_SSL=false.
+ * (CI runs them against MySQL and MariaDB). MIL_TEST_MYSQL_PORT/USER/PASSWORD/DATABASE/SSL/ROOT_PASSWORD default
+ * to 3306/mil/milpass/mil/true/root. The "mysql" backend uses MIL_TEST_MYSQL_SSL, "mysql-nossl" always runs
+ * without SSL (with allow-public-key-retrieval, like the plugin's default config). Connections use the plugin's
+ * own JDBC URL ({@link CoDatabase#mysqlJdbcUrl}).
  */
 class CoDatabaseTest {
     private static final Logger LOG = Logger.getLogger("CoDatabaseTest");
@@ -45,7 +47,7 @@ class CoDatabaseTest {
     private final List<CoDatabase> opened = new ArrayList<>();
 
     static Stream<String> backends() {
-        return mysqlConfigured() ? Stream.of("sqlite", "mysql") : Stream.of("sqlite");
+        return mysqlConfigured() ? Stream.of("sqlite", "mysql", "mysql-nossl") : Stream.of("sqlite");
     }
 
     private static boolean mysqlConfigured() {
@@ -62,18 +64,24 @@ class CoDatabaseTest {
 
     private DatabaseSettings settings(String backend) {
         if ("mysql".equals(backend)) {
-            return new DatabaseSettings(true, env("MIL_TEST_MYSQL_HOST", "127.0.0.1"),
-                    Integer.parseInt(env("MIL_TEST_MYSQL_PORT", "3306")), env("MIL_TEST_MYSQL_USER", "mil"),
-                    env("MIL_TEST_MYSQL_PASSWORD", "milpass"), env("MIL_TEST_MYSQL_DATABASE", "mil"),
-                    Boolean.parseBoolean(env("MIL_TEST_MYSQL_SSL", "true")), null);
+            return mysqlSettings(env("MIL_TEST_MYSQL_USER", "mil"), env("MIL_TEST_MYSQL_PASSWORD", "milpass"),
+                    Boolean.parseBoolean(env("MIL_TEST_MYSQL_SSL", "true")), true);
+        }
+        if ("mysql-nossl".equals(backend)) {
+            return mysqlSettings(env("MIL_TEST_MYSQL_USER", "mil"), env("MIL_TEST_MYSQL_PASSWORD", "milpass"), false, true);
         }
         return DatabaseSettings.sqlite(tempDir.resolve("test-" + (++counter) + ".db").toFile());
     }
 
+    private static DatabaseSettings mysqlSettings(String user, String password, boolean ssl, boolean publicKeyRetrieval) {
+        return new DatabaseSettings(true, env("MIL_TEST_MYSQL_HOST", "127.0.0.1"),
+                Integer.parseInt(env("MIL_TEST_MYSQL_PORT", "3306")), user, password,
+                env("MIL_TEST_MYSQL_DATABASE", "mil"), ssl, publicKeyRetrieval, null);
+    }
+
     private static Connection raw(DatabaseSettings s) throws SQLException {
         if (s.mysql()) {
-            return DriverManager.getConnection("jdbc:mysql://" + s.host() + ":" + s.port() + "/" + s.databaseName()
-                    + "?useSSL=false&allowPublicKeyRetrieval=true", s.username(), s.password());
+            return DriverManager.getConnection(CoDatabase.mysqlJdbcUrl(s), s.username(), s.password());
         }
         return DriverManager.getConnection("jdbc:sqlite:" + s.sqliteFile().getAbsolutePath());
     }
@@ -280,7 +288,7 @@ class CoDatabaseTest {
     @Test
     void openFailsCleanlyWithoutDatabase() {
         // Unreachable MySQL: open() must return false quickly, not throw.
-        DatabaseSettings s = new DatabaseSettings(true, "127.0.0.1", 1, "x", "x", "x", false, null);
+        DatabaseSettings s = new DatabaseSettings(true, "127.0.0.1", 1, "x", "x", "x", false, true, null);
         CoDatabase db = new CoDatabase(s, LOG);
         assertFalse(db.open());
         assertFalse(db.isOpen());
@@ -293,5 +301,61 @@ class CoDatabaseTest {
         CoDatabase db = open(DatabaseSettings.sqlite(f));
         assertTrue(db.isOpen());
         assertTrue(f.exists());
+    }
+
+    /** Forgets MySQL's cached password hashes, so the next login of a user is a full authentication again. */
+    private static void flushPrivileges() throws SQLException {
+        DatabaseSettings root = mysqlSettings("root", env("MIL_TEST_MYSQL_ROOT_PASSWORD", "root"), false, true);
+        try (Connection c = raw(root); Statement st = c.createStatement()) {
+            st.execute("FLUSH PRIVILEGES");
+        }
+    }
+
+    @Test
+    void firstLoginWithoutSslUsesPublicKeyRetrieval() throws Exception {
+        Assumptions.assumeTrue(mysqlConfigured(), "MySQL not configured");
+        String user = env("MIL_TEST_MYSQL_USER", "mil");
+        String password = env("MIL_TEST_MYSQL_PASSWORD", "milpass");
+        boolean mariadb;
+        try (Connection c = raw(mysqlSettings(user, password, false, true))) {
+            mariadb = c.getMetaData().getDatabaseProductVersion().toLowerCase(java.util.Locale.ROOT).contains("mariadb");
+        }
+
+        // 1.4.0 behaviour (no public key retrieval): MySQL 8 refuses the first login without SSL.
+        flushPrivileges();
+        CoDatabase old = new CoDatabase(mysqlSettings(user, password, false, false), LOG);
+        boolean oldOpened = old.open();
+        old.close();
+        if (mariadb) {
+            assertTrue(oldOpened, "MariaDB (mysql_native_password) does not need public key retrieval");
+        } else {
+            assertFalse(oldOpened, "MySQL 8 must refuse the first login without SSL and without public key retrieval");
+        }
+
+        // Fixed default: the first login after a flush (like after a MySQL restart) works.
+        flushPrivileges();
+        CoDatabase db = open(mysqlSettings(user, password, false, true));
+        assertTrue(db.isOpen());
+        assertNotNull(db.getAllItems());
+    }
+
+    @Test
+    void jdbcUrlSendsPublicKeyRetrievalOnlyWithoutSsl() {
+        assertTrue(CoDatabase.mysqlJdbcUrl(mysqlSettings("u", "p", false, true)).contains("&allowPublicKeyRetrieval=true"));
+        assertFalse(CoDatabase.mysqlJdbcUrl(mysqlSettings("u", "p", false, false)).contains("allowPublicKeyRetrieval"));
+        assertFalse(CoDatabase.mysqlJdbcUrl(mysqlSettings("u", "p", true, true)).contains("allowPublicKeyRetrieval"),
+                "with SSL the password is sent over TLS, no public key retrieval needed");
+        assertTrue(CoDatabase.mysqlJdbcUrl(mysqlSettings("u", "p", true, true)).contains("useSSL=true"));
+        assertTrue(CoDatabase.mysqlJdbcUrl(mysqlSettings("u", "p", false, true)).contains("allowLoadLocalInfile=false"));
+    }
+
+    @Test
+    void loopbackHosts() {
+        for (String h : new String[] {"localhost", "LOCALHOST", "127.0.0.1", "127.1.2.3", "::1", "[::1]", "0:0:0:0:0:0:0:1"}) {
+            assertTrue(CoDatabase.isLoopbackHost(h), h);
+        }
+        for (String h : new String[] {"db.example.com", "10.0.0.5", "192.168.1.2", "128.0.0.1", "127.0.0.1.evil.com", "", null}) {
+            assertFalse(CoDatabase.isLoopbackHost(h), String.valueOf(h));
+        }
     }
 }

@@ -4,7 +4,7 @@
 
 MyItemLibrary is a Minecraft server plugin that gives every player a personal **item library**: a GUI with rewards that run a console command when claimed. Items are added through the built-in REST API (for example from a webshop) and stored in MySQL or a local SQLite database.
 
-**Latest version: 1.4** · Supports **Paper** and **Spigot** · Minecraft **1.20.5 – 26.3**
+**Latest version: 1.4.1** · Supports **Paper** and **Spigot** · Minecraft **1.20.5 – 26.3**
 
 ## Requirements
 
@@ -43,4 +43,4 @@ The same jar works on Paper and Spigot. Folia is not supported.
 - [Configuration Guide](Configuration-guide)
 - [API Documentation](API-documentation)
 - [Command Reference](Command-reference)
-- [Upgrading (1.3 → 1.4, 1.1 → 1.3)](Upgrading)
+- [Upgrading (1.4 → 1.4.1, 1.3 → 1.4, 1.1 → 1.3)](Upgrading)

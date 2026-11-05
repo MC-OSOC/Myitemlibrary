@@ -22,11 +22,16 @@ c-database:
   database: ""
   # Encrypt the MySQL connection (recommended when the database is on another machine)
   use-ssl: false
+  # Only used when use-ssl is false: lets MySQL 8 log in without SSL (since 1.4.1)
+  allow-public-key-retrieval: true
 ```
 
 - **Local**: an SQLite file `database.db` is created in the plugin folder. Nothing else to configure.
 - **MySQL**: fill in `c-database`. MariaDB works too (use MySQL mode; tested with MariaDB 11.8 and MySQL 8.4). The tables (`co_list_item`, `co_orders`, `co_claim_log`) are created and migrated automatically. MySQL uses a small connection pool (HikariCP, bundled in the jar, max 6 connections).
 - `use-ssl`: set to `true` when the database is not on the same machine. Your MySQL server must have SSL enabled.
+- `allow-public-key-retrieval` (default `true`, only used when `use-ssl: false`): MySQL 8 logs users in with `caching_sha2_password`. Without SSL, the driver must ask the server for its RSA public key to send the password; otherwise the first login after a MySQL start fails with `Public Key Retrieval is not allowed`. MariaDB and older MySQL do not need it, and it does nothing when `use-ssl: true`.
+  - **Security:** without SSL, someone who can intercept the network between the Minecraft server and MySQL could hand over a fake key and read the password. That is fine when MySQL runs on the same machine (`localhost`/`127.0.0.1`). If MySQL is on another machine or network, use `use-ssl: true` instead; the plugin logs a warning at startup when `use-ssl` is `false` and the host is not local.
+  - If you set it to `false` and the login fails with that error, the plugin logs a hint naming both options.
 - If a connection drops (for example MySQL `wait_timeout`), the pool replaces it automatically.
 - Database work (opening the GUI, claiming, API requests) runs off the server main thread, so a slow database does not freeze the server.
 

@@ -1,5 +1,13 @@
 # Upgrading
 
+## 1.4 → 1.4.1
+
+Bugfix release. Replace the jar in `plugins/` and restart. No database migration.
+
+- Fixes `Could not connect to the database: Public Key Retrieval is not allowed` with MySQL 8 and `c-database.use-ssl: false` (the default), which typically appeared after a MySQL restart.
+- New option `c-database.allow-public-key-retrieval` (default `true`; your existing `config.yml` does not need it, the default is used). See the [Configuration Guide](Configuration-guide#database-configuration) for the security note: use `use-ssl: true` when MySQL is on another machine.
+- New startup warning when `use-ssl` is `false` and the MySQL host is not `localhost`/`127.0.0.1`/`::1`.
+
 ## 1.3 → 1.4
 
 Replace the jar in `plugins/` and restart. No config changes are needed.

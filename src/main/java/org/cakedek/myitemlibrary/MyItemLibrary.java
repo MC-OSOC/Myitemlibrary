@@ -138,7 +138,8 @@ public final class MyItemLibrary extends JavaPlugin {
                 return false;
             }
             settings = new DatabaseSettings(true, host, config.getInt("c-database.port", 3306), username, password,
-                    databaseName, config.getBoolean("c-database.use-ssl", false), null);
+                    databaseName, config.getBoolean("c-database.use-ssl", false),
+                    config.getBoolean("c-database.allow-public-key-retrieval", true), null);
         } else if ("Local".equalsIgnoreCase(databaseMode)) {
             settings = DatabaseSettings.sqlite(new File(getDataFolder(), "database.db"));
         } else {
