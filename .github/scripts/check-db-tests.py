@@ -14,8 +14,10 @@ for c in cases:
         state = "passed"
     print(f"{state:8} {c.get('name')}")
 ran = [c.get("name") for c in cases if c.find("skipped") is None]
-# Parameterized tests run once per backend: [1] = SQLite, [2] = the MySQL-compatible server.
-need = ["(String)[1]", "(String)[2]", "concurrentMigrationOfSharedMysqlDatabase"]
+# Parameterized tests run once per backend: [1] = SQLite, [2] = the MySQL-compatible server,
+# [3] = the same server without SSL (plugin default: allow-public-key-retrieval).
+need = ["(String)[1]", "(String)[2]", "(String)[3]", "concurrentMigrationOfSharedMysqlDatabase",
+        "firstLoginWithoutSslUsesPublicKeyRetrieval"]
 missing = [n for n in need if not any(n in x for x in ran)]
 if missing or len(ran) != len(cases):
     sys.exit(f"database tests did not run on SQLite and {server} (missing {missing}, {len(cases) - len(ran)} skipped)")

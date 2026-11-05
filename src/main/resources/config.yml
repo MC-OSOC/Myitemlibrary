@@ -13,6 +13,12 @@ c-database:
   # Encrypt the MySQL connection (recommended when the database is on another machine)
   # เข้ารหัสการเชื่อมต่อ MySQL (แนะนำถ้าฐานข้อมูลอยู่คนละเครื่อง)
   use-ssl: false
+  # Only used when use-ssl is false. MySQL 8 needs this to log in without SSL (otherwise:
+  # "Public Key Retrieval is not allowed"). Without SSL someone on the network between this server and MySQL
+  # could fake the key and read the password, so use use-ssl: true when MySQL is on another machine.
+  # ใช้เฉพาะเมื่อ use-ssl เป็น false: MySQL 8 ต้องเปิดค่านี้ถึงจะล็อกอินแบบไม่มี SSL ได้
+  # ถ้าฐานข้อมูลอยู่คนละเครื่องแนะนำให้ใช้ use-ssl: true แทน
+  allow-public-key-retrieval: true
 
 ###############################################
 # API Settings

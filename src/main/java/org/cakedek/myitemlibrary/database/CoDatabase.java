@@ -32,6 +32,7 @@ import java.util.logging.Logger;
 public class CoDatabase implements AutoCloseable {
     private static final int MAX_SEARCH_LENGTH = 64;
     private static final int MYSQL_POOL_SIZE = 6;
+    private static final String PUBLIC_KEY_ERROR = "Public Key Retrieval is not allowed";
 
     /** Owner check used by listing and claiming: bound to this UUID, or not bound yet and the name matches. */
     private static final String OWNER_CONDITION =
@@ -54,10 +55,11 @@ public class CoDatabase implements AutoCloseable {
         if (settings.mysql()) {
             loadDriver("com.mysql.cj.jdbc.Driver", "com.mysql.jdbc.Driver");
             config.setPoolName("MyItemLibrary-MySQL");
-            config.setJdbcUrl("jdbc:mysql://" + settings.host() + ":" + settings.port() + "/" + settings.databaseName()
-                    + "?useUnicode=true&characterEncoding=utf8"
-                    + "&useSSL=" + settings.useSsl()
-                    + "&allowLoadLocalInfile=false");
+            config.setJdbcUrl(mysqlJdbcUrl(settings));
+            if (!settings.useSsl() && !isLoopbackHost(settings.host())) {
+                logger.warning("c-database.use-ssl is false but the MySQL server (" + settings.host() + ") is not on this "
+                        + "machine: the connection is not encrypted. Set c-database.use-ssl: true if the network is not trusted.");
+            }
             config.setUsername(settings.username());
             config.setPassword(settings.password());
             config.setMaximumPoolSize(MYSQL_POOL_SIZE);
@@ -82,6 +84,10 @@ public class CoDatabase implements AutoCloseable {
             // Do not print the URL/credentials, only the reason.
             Throwable cause = e.getCause() != null ? e.getCause() : e;
             logger.severe("Could not connect to the database: " + cause.getMessage());
+            if (causeMentions(e, PUBLIC_KEY_ERROR)) {
+                logger.severe("Hint: MySQL 8 needs SSL or public key retrieval for this login. Set c-database.use-ssl: true "
+                        + "(recommended) or c-database.allow-public-key-retrieval: true in config.yml, then /my-library-reload.");
+            }
             return false;
         }
 
@@ -94,6 +100,44 @@ public class CoDatabase implements AutoCloseable {
             close();
             return false;
         }
+    }
+
+    /** The JDBC URL the plugin uses for MySQL/MariaDB (also used by the tests). */
+    public static String mysqlJdbcUrl(DatabaseSettings s) {
+        StringBuilder url = new StringBuilder("jdbc:mysql://")
+                .append(s.host()).append(':').append(s.port()).append('/').append(s.databaseName())
+                .append("?useUnicode=true&characterEncoding=utf8")
+                .append("&useSSL=").append(s.useSsl())
+                .append("&allowLoadLocalInfile=false");
+        if (!s.useSsl() && s.allowPublicKeyRetrieval()) {
+            // MySQL 8 caching_sha2_password: without SSL the driver must fetch the server's RSA key to send the
+            // password on the first login after a server start. Without this the login fails with
+            // "Public Key Retrieval is not allowed". Not needed (and not sent) when SSL is on.
+            url.append("&allowPublicKeyRetrieval=true");
+        }
+        return url.toString();
+    }
+
+    /** True for localhost and loopback IP literals (127.0.0.0/8, ::1). No DNS lookup. */
+    static boolean isLoopbackHost(String host) {
+        if (host == null) {
+            return false;
+        }
+        String h = host.trim().toLowerCase(java.util.Locale.ROOT);
+        if (h.startsWith("[") && h.endsWith("]")) {
+            h = h.substring(1, h.length() - 1);
+        }
+        return h.equals("localhost") || h.equals("::1") || h.equals("0:0:0:0:0:0:0:1")
+                || h.matches("127\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}");
+    }
+
+    private static boolean causeMentions(Throwable t, String text) {
+        for (Throwable c = t; c != null; c = c.getCause()) {
+            if (c.getMessage() != null && c.getMessage().contains(text)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static void loadDriver(String... classNames) {
